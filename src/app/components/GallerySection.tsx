@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { useInView } from 'motion/react';
 import { useRef } from 'react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { X } from 'lucide-react';
 import Masonry from 'react-responsive-masonry';
+import { api } from '../lib/api';
 import img1 from '../../imports/image-2.png';
 import img2 from '../../imports/image.png';
 import img3 from '../../imports/image-1.png';
@@ -27,16 +28,63 @@ import img22 from '../../imports/image-22.png';
 import img23 from '../../imports/image-23.png';
 import img24 from '../../imports/image-24.png';
 
-// Removed image-10, image-15, and image-18 as they are used in Courses Section
-const galleryImages = [
-  img13, img19, img12, img20, img16, img21, img17, img22, img10, 
-  img23, img14, img24, img6, img7, img8, img9, img1, img2, img3, img4, img5
-];
+interface GalleryItem {
+  id: string;
+  src: string;
+  alt: string;
+}
+
+/**
+ * The photos the site shipped with, kept as a fallback.
+ *
+ * If the API is unreachable the gallery still renders exactly as it always
+ * has, rather than showing an empty section. Removed image-10, image-15 and
+ * image-18 as they are used in the Courses Section.
+ */
+const fallbackImages: GalleryItem[] = [
+  img13, img19, img12, img20, img16, img21, img17, img22, img10,
+  img23, img14, img24, img6, img7, img8, img9, img1, img2, img3, img4, img5,
+].map((src, index) => ({
+  id: `local-${index}`,
+  src,
+  alt: `Students and facilities at ADEF TVET School`,
+}));
 
 export function GallerySection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, amount: 0.2 });
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<GalleryItem | null>(null);
+  const [images, setImages] = useState<GalleryItem[]>(fallbackImages);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await api.gallery.listPublic('?limit=60');
+
+        // An empty response means an administrator has hidden everything; that
+        // is a deliberate choice, so it is respected rather than overridden by
+        // the fallback.
+        if (!cancelled && result.data.length > 0) {
+          setImages(
+            result.data.map((image) => ({
+              id: image.id,
+              src: image.url,
+              alt: image.altText,
+            })),
+          );
+        }
+      } catch {
+        // Keep the bundled photos. The gallery is never blank because the
+        // API happens to be down.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <section id="gallery" className="py-20 bg-white">
@@ -65,24 +113,24 @@ export function GallerySection() {
           transition={{ duration: 0.8, delay: 0.3 }}
         >
           <Masonry columnsCount={3} gutter="1rem" className="hidden md:block">
-            {galleryImages.map((img, index) => (
+            {images.map((image, index) => (
               <GalleryImage
-                key={index}
-                src={img}
+                key={image.id}
+                image={image}
                 index={index}
-                onClick={() => setSelectedImage(img)}
+                onClick={() => setSelectedImage(image)}
               />
             ))}
           </Masonry>
 
           {/* Mobile Grid */}
           <div className="grid grid-cols-2 gap-4 md:hidden">
-            {galleryImages.map((img, index) => (
+            {images.map((image, index) => (
               <GalleryImage
-                key={index}
-                src={img}
+                key={image.id}
+                image={image}
                 index={index}
-                onClick={() => setSelectedImage(img)}
+                onClick={() => setSelectedImage(image)}
               />
             ))}
           </div>
@@ -108,8 +156,8 @@ export function GallerySection() {
             className="max-w-5xl w-full"
           >
             <ImageWithFallback
-              src={selectedImage}
-              alt="Gallery Image"
+              src={selectedImage.src}
+              alt={selectedImage.alt}
               className="w-full h-auto max-h-[90vh] object-contain rounded-lg"
             />
           </motion.div>
@@ -119,7 +167,15 @@ export function GallerySection() {
   );
 }
 
-function GalleryImage({ src, index, onClick }: { src: string; index: number; onClick: () => void }) {
+function GalleryImage({
+  image,
+  index,
+  onClick,
+}: {
+  image: GalleryItem;
+  index: number;
+  onClick: () => void;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -129,8 +185,9 @@ function GalleryImage({ src, index, onClick }: { src: string; index: number; onC
       onClick={onClick}
     >
       <ImageWithFallback
-        src={src}
-        alt={`Gallery ${index + 1}`}
+        src={image.src}
+        alt={image.alt}
+        loading="lazy"
         className="w-full h-auto object-cover group-hover:scale-110 transition-transform duration-500"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">

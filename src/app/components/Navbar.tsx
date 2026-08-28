@@ -28,6 +28,7 @@ export function Navbar() {
     { label: 'About', id: 'about' },
     { label: 'Courses', id: 'courses' },
     { label: 'Gallery', id: 'gallery' },
+    { label: 'News', id: 'news' },
     { label: 'Contact', id: 'contact' },
   ];
 

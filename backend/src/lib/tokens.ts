@@ -1,0 +1,66 @@
+import crypto from 'node:crypto';
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env';
+import { ApiError } from '../utils/ApiError';
+
+export interface AccessTokenPayload {
+  sub: string;
+  email: string;
+  name: string;
+  role: 'SUPER_ADMIN' | 'EDITOR';
+}
+
+export function signAccessToken(payload: AccessTokenPayload): string {
+  return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
+    expiresIn: env.ACCESS_TOKEN_TTL as jwt.SignOptions['expiresIn'],
+    issuer: 'adef-api',
+  });
+}
+
+export function verifyAccessToken(token: string): AccessTokenPayload {
+  try {
+    return jwt.verify(token, env.JWT_ACCESS_SECRET, { issuer: 'adef-api' }) as AccessTokenPayload;
+  } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      // A distinct code so the dashboard knows to refresh and retry rather
+      // than bouncing the user to the login screen.
+      throw new ApiError(401, 'TOKEN_EXPIRED', 'Your session expired.');
+    }
+    throw ApiError.unauthorized('That sign-in token is not valid.');
+  }
+}
+
+/**
+ * Refresh tokens are opaque random strings, not JWTs, so that revoking one is
+ * a database write rather than something we can only wait out.
+ */
+export function generateRefreshToken(): string {
+  return crypto.randomBytes(48).toString('base64url');
+}
+
+/**
+ * Only the hash is stored. A leaked database therefore yields no usable
+ * sessions. SHA-256 is right here (unlike for passwords) because the input is
+ * already 48 bytes of entropy — there is nothing to brute-force.
+ */
+export function hashRefreshToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+export function refreshTokenExpiry(): Date {
+  return new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+}
+
+export const REFRESH_COOKIE_NAME = 'adef_refresh';
+
+/**
+ * Scoped to the auth routes: the browser then never sends this cookie to the
+ * gallery or announcement endpoints, so it cannot leak through them.
+ */
+export const refreshCookieOptions = {
+  httpOnly: true,
+  secure: env.isProduction,
+  sameSite: 'lax' as const,
+  path: '/api/v1/auth',
+  maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
+};

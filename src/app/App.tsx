@@ -5,6 +5,7 @@ import { AboutSection } from './components/AboutSection';
 import { VisionMissionSection } from './components/VisionMissionSection';
 import { CoursesSection } from './components/CoursesSection';
 import { GallerySection } from './components/GallerySection';
+import { AnnouncementsSection } from './components/AnnouncementsSection';
 import { WhyChooseSection } from './components/WhyChooseSection';
 import { WorkingHoursSection } from './components/WorkingHoursSection';
 import { TestimonialsSection } from './components/TestimonialsSection';
@@ -26,6 +27,7 @@ export default function App() {
         <VisionMissionSection />
         <CoursesSection />
         <GallerySection />
+        <AnnouncementsSection />
         <WhyChooseSection />
         <WorkingHoursSection />
         <TestimonialsSection />

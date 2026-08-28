@@ -1,0 +1,195 @@
+// ADEF TVET School — database schema
+// The connection URL lives in prisma.config.ts (Prisma 7 no longer reads it here).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  EDITOR
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum AnnouncementType {
+  NEWS
+  EVENT
+  NOTICE
+}
+
+/// Why a refresh token stopped being valid. Distinguishing these matters:
+/// only a token revoked by ROTATION being replayed is evidence of theft.
+enum RevokeReason {
+  ROTATED
+  LOGOUT
+  REUSE_DETECTED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+}
+
+// ─── Models ─────────────────────────────────────────────────────────────────
+
+/// Staff who can sign in to the dashboard. Created by the seed or by a
+/// SUPER_ADMIN — there is deliberately no public signup route.
+model AdminUser {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role      @default(EDITOR)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  galleryImages GalleryImage[]
+  announcements Announcement[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@map("admin_users")
+}
+
+/// One photo on the public gallery page.
+model GalleryImage {
+  id       String  @id @default(uuid()) @db.Uuid
+  title    String
+  caption  String?
+  /// Required, not optional: a public gallery without alt text is inaccessible.
+  altText  String
+  category String  @default("General")
+
+  /// Path within the storage driver. The driver, not the database, decides
+  /// what that path physically means.
+  storageKey   String  @unique
+  url          String
+  thumbnailKey String?
+  thumbnailUrl String?
+
+  width     Int
+  height    Int
+  sizeBytes Int
+  mimeType  String
+
+  /// Manual display order, set by dragging in the dashboard.
+  sortOrder Int     @default(0)
+  published Boolean @default(true)
+
+  uploadedById String?    @db.Uuid
+  /// Deleting a staff account must not delete the school's photos.
+  uploadedBy   AdminUser? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published, sortOrder])
+  @@index([category])
+  @@map("gallery_images")
+}
+
+/// A text post, optionally carrying PDF documents.
+model Announcement {
+  id      String  @id @default(uuid()) @db.Uuid
+  title   String
+  /// Stable public identifier. Kept unchanged when the title is edited so
+  /// links already shared with students keep working.
+  slug    String  @unique
+  /// Sanitised on write, so no consumer has to remember to escape it.
+  body    String
+  excerpt String?
+
+  type   AnnouncementType   @default(NEWS)
+  status AnnouncementStatus @default(DRAFT)
+  pinned Boolean            @default(false)
+
+  publishedAt DateTime?
+
+  authorId String?    @db.Uuid
+  author   AdminUser? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  attachments Attachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, pinned, publishedAt])
+  @@index([slug])
+  @@map("announcements")
+}
+
+/// A PDF belonging to one announcement.
+model Attachment {
+  id             String       @id @default(uuid()) @db.Uuid
+  announcementId String       @db.Uuid
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  /// The name the uploader gave it, used for the download filename.
+  filename   String
+  storageKey String @unique
+  url        String
+  mimeType   String
+  sizeBytes  Int
+
+  createdAt DateTime @default(now())
+
+  @@index([announcementId])
+  @@map("attachments")
+}
+
+/// Lets a session be revoked server-side. Only the hash is stored, so a
+/// database leak does not hand over usable sessions.
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  tokenHash String    @unique
+  userId    String    @db.Uuid
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  revokedReason RevokeReason?
+  userAgent    String?
+  ip           String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+/// Who changed what. Answers "who deleted that photo?" after the fact.
+model AuditLog {
+  id      String     @id @default(uuid()) @db.Uuid
+  actorId String?    @db.Uuid
+  actor   AdminUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  action   AuditAction
+  entity   String
+  entityId String?
+  meta     Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}

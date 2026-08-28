@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: adef-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: adef
+      POSTGRES_PASSWORD: adef_local_dev
+      POSTGRES_DB: adef
+    # 5433 on the host so this never collides with a Postgres you already run locally
+    ports:
+      - '5433:5432'
+    volumes:
+      - adef_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U adef -d adef']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  adef_pgdata:
