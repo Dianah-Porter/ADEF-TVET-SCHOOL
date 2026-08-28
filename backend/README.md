@@ -8,7 +8,11 @@ The frontend lives one directory up, in `../src`. Nothing here modifies it.
 ## Requirements
 
 - **Node 20 or newer** — check with `node -v`
-- **Docker Desktop** — runs the local Postgres. It must be *running*, not just installed.
+- **PostgreSQL 16 or newer**, running locally on port 5432
+  ([download](https://www.postgresql.org/download/windows/)). During installation
+  you set a password for the `postgres` user — you need it in step 2 below.
+
+No Docker required.
 
 ## Running it
 
@@ -20,23 +24,39 @@ cd backend
 # 1. Dependencies
 npm install
 
-# 2. Configuration
+# 2. Create the database (once). Enter the postgres password when asked.
+"/c/Program Files/PostgreSQL/18/bin/psql.exe" -U postgres -h localhost -c "CREATE DATABASE adef;"
+
+# 3. Configuration
 cp .env.example .env
+```
 
-# 3. Generate the two JWT secrets and paste them into .env
+Open `.env` and set two things:
+
+**`DATABASE_URL`** — put your `postgres` password in. If it contains any of
+`@ : / ? # [ ] %`, those must be **percent-encoded**, or the URL parser reads
+them as separators. `@` becomes `%40`, so `Gatesi@123` is written `Gatesi%40123`:
+
+```
+DATABASE_URL="postgresql://postgres:YOUR%40PASSWORD@localhost:5432/adef?schema=public"
+```
+
+**The two JWT secrets** — generate a fresh value for each:
+
+```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
 
-# 4. Database — starts Postgres 16 on localhost:5433
-npm run db:up
+Then finish:
 
-# 5. Create the tables
+```bash
+# 4. Create the tables
 npm run db:migrate
 
-# 6. Create the first administrator and import the 21 website photos
+# 5. Create the first administrator and import the 21 website photos
 npm run db:seed
 
-# 7. Start the API
+# 6. Start the API
 npm run dev
 ```
 
@@ -78,7 +98,9 @@ seed deliberately does *not* reset it.
 
 | Symptom | Cause |
 | --- | --- |
-| `error during connect: ... dockerDesktopLinuxEngine` | Docker Desktop is not running. Start it, then `npm run db:up`. |
+| `database UNREACHABLE` at startup | The Postgres service is stopped. In an **admin** PowerShell: `Start-Service postgresql-x64-18`. Add `Set-Service postgresql-x64-18 -StartupType Automatic` so it starts with Windows. |
+| `password authentication failed` | Wrong password in `DATABASE_URL`, or a special character was not percent-encoded (`@` → `%40`). |
+| `database "adef" does not exist` | Step 2 above was skipped. |
 | `Invalid environment configuration` | A variable is missing or a secret is too short. The message names the exact field. |
 | `EADDRINUSE :4000` | An earlier API is still running. Stop it, or change `PORT` in `.env`. |
 | `Cannot find module ...iteinite.js` | The `&` path problem below — use `npm run <script>`, never `npx`. |
@@ -175,7 +197,6 @@ It destroys all uploaded content, so it is a development convenience only.
 | `npm run lint` | ESLint |
 | `npm run test:smoke` | End-to-end smoke test against a running server |
 | `npm run format` | Prettier, in place |
-| `npm run db:up` / `db:down` | Start / stop the Postgres container |
 | `npm run db:migrate` | Create and apply a migration |
 | `npm run db:generate` | Regenerate the Prisma client |
 | `npm run db:studio` | Browse the database in a GUI |
@@ -234,6 +255,10 @@ logged in full server-side, returned as a generic 500 with no internal detail.
 **Database.** Prisma 7 no longer accepts `url` in `schema.prisma`. The CLI reads
 it from `prisma.config.ts`; the runtime client gets it through the `pg` driver
 adapter in `src/lib/prisma.ts`.
+
+The API talks to a PostgreSQL server installed on the machine — there is no
+Docker in this project. Any Postgres 16+ will do, local or hosted; only
+`DATABASE_URL` decides which.
 
 ## Authentication
 

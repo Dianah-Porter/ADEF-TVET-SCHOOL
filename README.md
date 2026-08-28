@@ -21,12 +21,14 @@ ADEF/
 
 Two terminals. The API first, since the site reads from it.
 
+Needs **PostgreSQL running locally** (no Docker) — see `backend/README.md`
+for the one-time database setup.
+
 ```bash
 # Terminal 1 — API on :4000
 cd backend
 npm install
-cp .env.example .env      # then fill in the two JWT secrets
-npm run db:up             # Postgres in Docker
+cp .env.example .env      # set DATABASE_URL and the two JWT secrets
 npm run db:migrate
 npm run db:seed           # creates the first admin, imports the 21 photos
 npm run dev
