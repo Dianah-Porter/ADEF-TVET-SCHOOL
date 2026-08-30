@@ -1,5 +1,7 @@
 import { motion } from 'motion/react';
 import { Instagram, Twitter, Mail, Phone, MapPin } from 'lucide-react';
+import { ImageWithFallback } from './figma/ImageWithFallback';
+import adefBadge from '../../imports/adef_badge.jpg';
 
 export function Footer() {
   const scrollToSection = (sectionId: string) => {
@@ -14,7 +16,6 @@ export function Footer() {
     { label: 'About Us', id: 'about' },
     { label: 'Our Courses', id: 'courses' },
     { label: 'Gallery', id: 'gallery' },
-    { label: 'News', id: 'news' },
     { label: 'Contact', id: 'contact' },
   ];
 
@@ -30,9 +31,18 @@ export function Footer() {
               viewport={{ once: true }}
               transition={{ duration: 0.5 }}
             >
-              <div className="flex flex-col mb-4">
-                <span className="text-3xl font-bold">ADEF</span>
-                <span className="text-sm text-[var(--gold)] tracking-wider">TVET SCHOOL</span>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-16 h-16 rounded-full bg-white p-0.5 shadow-lg flex-shrink-0 ring-2 ring-[var(--gold)]/50">
+                  <ImageWithFallback
+                    src={adefBadge}
+                    alt="ADEF TVET School Badge"
+                    className="w-full h-full object-contain rounded-full"
+                  />
+                </div>
+                <div className="flex flex-col leading-tight">
+                  <span className="text-2xl font-extrabold tracking-wide leading-none">ADEF TVET SCHOOL</span>
+                  <span className="text-xs text-[var(--gold)] tracking-widest uppercase mt-1">Kigali, Rwanda</span>
+                </div>
               </div>
               <p className="text-gray-300 leading-relaxed mb-6">
                 Empowering the next generation of skilled professionals through quality technical and vocational education.

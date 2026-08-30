@@ -1,11 +1,15 @@
+import { useRef } from 'react';
 import { motion } from 'motion/react';
 import { useInView } from 'motion/react';
-import { useRef } from 'react';
 import { Target, Lightbulb } from 'lucide-react';
+import { useApi } from '../../hooks/useApi';
+import { api } from '../../lib/api';
+import { STATIC_SETTINGS } from '../../lib/staticData';
 
 export function VisionMissionSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, amount: 0.3 });
+  const { data: settings, loading } = useApi(api.settings.get, STATIC_SETTINGS);
 
   return (
     <section className="py-20 bg-gradient-to-br from-[var(--navy)] to-[var(--charcoal)]">
@@ -24,7 +28,7 @@ export function VisionMissionSection() {
         </motion.div>
 
         <div className="grid md:grid-cols-2 gap-8">
-          {/* Vision Card */}
+          {/* Vision */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={isInView ? { opacity: 1, y: 0 } : {}}
@@ -37,13 +41,18 @@ export function VisionMissionSection() {
                 <Lightbulb className="w-8 h-8 text-[var(--gold)]" />
               </div>
               <h3 className="text-2xl font-bold text-[var(--navy)] mb-4">Vision</h3>
-              <p className="text-lg text-gray-700 leading-relaxed">
-                "To become the Referral TVET School in East Africa."
-              </p>
+              {loading ? (
+                <div className="space-y-2">
+                  <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-4 bg-gray-200 rounded animate-pulse w-4/5" />
+                </div>
+              ) : (
+                <p className="text-lg text-gray-700 leading-relaxed">"{settings.vision}"</p>
+              )}
             </div>
           </motion.div>
 
-          {/* Mission Card */}
+          {/* Mission */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={isInView ? { opacity: 1, y: 0 } : {}}
@@ -56,10 +65,15 @@ export function VisionMissionSection() {
                 <Target className="w-8 h-8 text-[var(--orange)]" />
               </div>
               <h3 className="text-2xl font-bold text-[var(--navy)] mb-4">Mission</h3>
-              <p className="text-lg text-gray-700 leading-relaxed">
-                "Empower and prepare students to deliver on high level standards of hands-on skills 
-                to meet local and international labour market."
-              </p>
+              {loading ? (
+                <div className="space-y-2">
+                  <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-4 bg-gray-200 rounded animate-pulse w-5/6" />
+                  <div className="h-4 bg-gray-200 rounded animate-pulse w-4/6" />
+                </div>
+              ) : (
+                <p className="text-lg text-gray-700 leading-relaxed">"{settings.mission}"</p>
+              )}
             </div>
           </motion.div>
         </div>

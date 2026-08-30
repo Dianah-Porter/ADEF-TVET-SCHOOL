@@ -1,90 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { useInView } from 'motion/react';
-import { useRef } from 'react';
-import { ImageWithFallback } from './figma/ImageWithFallback';
 import { X } from 'lucide-react';
 import Masonry from 'react-responsive-masonry';
-import { api } from '../lib/api';
-import img1 from '../../imports/image-2.png';
-import img2 from '../../imports/image.png';
-import img3 from '../../imports/image-1.png';
-import img4 from '../../imports/image-3.png';
-import img5 from '../../imports/image-4.png';
-import img6 from '../../imports/image-5.png';
-import img7 from '../../imports/image-6.png';
-import img8 from '../../imports/image-7.png';
-import img9 from '../../imports/image-8.png';
-import img10 from '../../imports/image-9.png';
-import img12 from '../../imports/image-11.png';
-import img13 from '../../imports/image-12.png';
-import img14 from '../../imports/image-14.png';
-import img16 from '../../imports/image-16.png';
-import img17 from '../../imports/image-17.png';
-import img19 from '../../imports/image-19.png';
-import img20 from '../../imports/image-20.png';
-import img21 from '../../imports/image-21.png';
-import img22 from '../../imports/image-22.png';
-import img23 from '../../imports/image-23.png';
-import img24 from '../../imports/image-24.png';
-
-interface GalleryItem {
-  id: string;
-  src: string;
-  alt: string;
-}
-
-/**
- * The photos the site shipped with, kept as a fallback.
- *
- * If the API is unreachable the gallery still renders exactly as it always
- * has, rather than showing an empty section. Removed image-10, image-15 and
- * image-18 as they are used in the Courses Section.
- */
-const fallbackImages: GalleryItem[] = [
-  img13, img19, img12, img20, img16, img21, img17, img22, img10,
-  img23, img14, img24, img6, img7, img8, img9, img1, img2, img3, img4, img5,
-].map((src, index) => ({
-  id: `local-${index}`,
-  src,
-  alt: `Students and facilities at ADEF TVET School`,
-}));
+import { ImageWithFallback } from './figma/ImageWithFallback';
+import { useApi } from '../../hooks/useApi';
+import { api } from '../../lib/api';
+import { STATIC_GALLERY } from '../../lib/staticData';
+import type { GalleryItem } from '../../types';
 
 export function GallerySection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, amount: 0.2 });
-  const [selectedImage, setSelectedImage] = useState<GalleryItem | null>(null);
-  const [images, setImages] = useState<GalleryItem[]>(fallbackImages);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const result = await api.gallery.listPublic('?limit=60');
-
-        // An empty response means an administrator has hidden everything; that
-        // is a deliberate choice, so it is respected rather than overridden by
-        // the fallback.
-        if (!cancelled && result.data.length > 0) {
-          setImages(
-            result.data.map((image) => ({
-              id: image.id,
-              src: image.url,
-              alt: image.altText,
-            })),
-          );
-        }
-      } catch {
-        // Keep the bundled photos. The gallery is never blank because the
-        // API happens to be down.
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [selected, setSelected] = useState<GalleryItem | null>(null);
+  const { data: galleryItems, loading } = useApi(api.gallery.list, STATIC_GALLERY);
 
   return (
     <section id="gallery" className="py-20 bg-white">
@@ -112,52 +41,67 @@ export function GallerySection() {
           animate={isInView ? { opacity: 1 } : {}}
           transition={{ duration: 0.8, delay: 0.3 }}
         >
-          <Masonry columnsCount={3} gutter="1rem" className="hidden md:block">
-            {images.map((image, index) => (
-              <GalleryImage
-                key={image.id}
-                image={image}
-                index={index}
-                onClick={() => setSelectedImage(image)}
-              />
-            ))}
-          </Masonry>
+          {loading ? (
+            <div className="grid grid-cols-3 gap-4">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} className="aspect-square bg-gray-200 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <>
+              {/* Desktop masonry */}
+              <Masonry columnsCount={3} gutter="1rem" className="hidden md:block">
+                {galleryItems.map((item, index) => (
+                  <GalleryImage
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    onClick={() => setSelected(item)}
+                  />
+                ))}
+              </Masonry>
 
-          {/* Mobile Grid */}
-          <div className="grid grid-cols-2 gap-4 md:hidden">
-            {images.map((image, index) => (
-              <GalleryImage
-                key={image.id}
-                image={image}
-                index={index}
-                onClick={() => setSelectedImage(image)}
-              />
-            ))}
-          </div>
+              {/* Mobile grid */}
+              <div className="grid grid-cols-2 gap-4 md:hidden">
+                {galleryItems.map((item, index) => (
+                  <GalleryImage
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    onClick={() => setSelected(item)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </motion.div>
       </div>
 
       {/* Lightbox */}
-      {selectedImage && (
+      {selected && (
         <div
           className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4"
-          onClick={() => setSelectedImage(null)}
+          onClick={() => setSelected(null)}
         >
           <button
             className="absolute top-4 right-4 text-white hover:text-[var(--gold)] transition-colors"
-            onClick={() => setSelectedImage(null)}
+            onClick={() => setSelected(null)}
           >
             <X size={32} />
           </button>
+          {selected.caption && (
+            <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/80 text-sm">
+              {selected.caption}
+            </p>
+          )}
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.8, opacity: 0 }}
             className="max-w-5xl w-full"
           >
             <ImageWithFallback
-              src={selectedImage.src}
-              alt={selectedImage.alt}
+              src={selected.imageUrl}
+              alt={selected.altText ?? selected.caption ?? 'Gallery image'}
               className="w-full h-auto max-h-[90vh] object-contain rounded-lg"
             />
           </motion.div>
@@ -168,11 +112,11 @@ export function GallerySection() {
 }
 
 function GalleryImage({
-  image,
+  item,
   index,
   onClick,
 }: {
-  image: GalleryItem;
+  item: GalleryItem;
   index: number;
   onClick: () => void;
 }) {
@@ -180,18 +124,20 @@ function GalleryImage({
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.4, delay: index * 0.1 }}
+      transition={{ duration: 0.4, delay: Math.min(index * 0.05, 0.6) }}
       className="relative overflow-hidden rounded-lg cursor-pointer group"
       onClick={onClick}
     >
       <ImageWithFallback
-        src={image.src}
-        alt={image.alt}
+        src={item.thumbnailUrl ?? item.imageUrl}
+        alt={item.altText ?? item.caption ?? `Gallery ${index + 1}`}
         loading="lazy"
         className="w-full h-auto object-cover group-hover:scale-110 transition-transform duration-500"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-        <span className="text-white font-semibold">View Full Image</span>
+        <span className="text-white font-semibold text-sm">
+          {item.caption ?? 'View Full Image'}
+        </span>
       </div>
     </motion.div>
   );

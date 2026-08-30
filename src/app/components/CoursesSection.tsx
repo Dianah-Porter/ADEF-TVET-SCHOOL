@@ -1,39 +1,25 @@
+import { useRef } from 'react';
 import { motion } from 'motion/react';
 import { useInView } from 'motion/react';
-import { useRef } from 'react';
+import { Flame, Hammer, Box, type LucideIcon } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-import { Flame, Hammer, Box } from 'lucide-react';
-import weldingImg from '../../imports/image-18.png';
-import masonryImg from '../../imports/image-10.png';
-import carpentryImg from '../../imports/image-15.png';
+import { useApi } from '../../hooks/useApi';
+import { api } from '../../lib/api';
+import { STATIC_COURSES } from '../../lib/staticData';
+import type { Course } from '../../types';
 
-const courses = [
-  {
-    title: 'Welding L3',
-    description: 'Master modern welding techniques with practical industrial training.',
-    image: weldingImg,
-    icon: Flame,
-    color: 'var(--orange)',
-  },
-  {
-    title: 'Masonry L3',
-    description: 'Develop strong construction and structural building skills.',
-    image: masonryImg,
-    icon: Hammer,
-    color: 'var(--gold)',
-  },
-  {
-    title: 'Carpentry L3',
-    description: 'Learn professional woodworking and craftsmanship techniques.',
-    image: carpentryImg,
-    icon: Box,
-    color: 'var(--charcoal)',
-  },
-];
+const ICON_MAP: Record<string, LucideIcon> = { Flame, Hammer, Box };
+const COLOR_MAP: Record<string, string> = {
+  orange: 'var(--orange)',
+  gold: 'var(--gold)',
+  charcoal: 'var(--charcoal)',
+  navy: 'var(--navy)',
+};
 
 export function CoursesSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, amount: 0.2 });
+  const { data: courses, loading } = useApi(api.courses.list, STATIC_COURSES);
 
   return (
     <section id="courses" className="py-20 bg-gray-50">
@@ -57,17 +43,28 @@ export function CoursesSection() {
         </motion.div>
 
         <div className="grid md:grid-cols-3 gap-8">
-          {courses.map((course, index) => (
-            <CourseCard key={course.title} course={course} index={index} isInView={isInView} />
-          ))}
+          {loading
+            ? Array.from({ length: 3 }).map((_, i) => <CourseSkeleton key={i} />)
+            : courses.map((course, index) => (
+                <CourseCard key={course.id} course={course} index={index} isInView={isInView} />
+              ))}
         </div>
       </div>
     </section>
   );
 }
 
-function CourseCard({ course, index, isInView }: { course: typeof courses[0]; index: number; isInView: boolean }) {
-  const Icon = course.icon;
+function CourseCard({
+  course,
+  index,
+  isInView,
+}: {
+  course: Course;
+  index: number;
+  isInView: boolean;
+}) {
+  const Icon = ICON_MAP[course.iconName] ?? Flame;
+  const color = COLOR_MAP[course.accentColor] ?? 'var(--orange)';
 
   return (
     <motion.div
@@ -76,46 +73,53 @@ function CourseCard({ course, index, isInView }: { course: typeof courses[0]; in
       transition={{ duration: 0.6, delay: index * 0.2 }}
       className="group relative bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300"
     >
-      {/* Image */}
       <div className="relative h-64 overflow-hidden">
         <ImageWithFallback
-          src={course.image}
+          src={course.imageUrl}
           alt={course.title}
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-        
-        {/* Icon */}
-        <div 
+        <div
           className="absolute top-4 right-4 w-12 h-12 bg-white/90 rounded-full flex items-center justify-center shadow-lg"
-          style={{ color: course.color }}
+          style={{ color }}
         >
           <Icon className="w-6 h-6" />
         </div>
-
-        {/* Title Overlay */}
         <div className="absolute bottom-4 left-4 right-4">
           <h3 className="text-2xl font-bold text-white mb-1">{course.title}</h3>
+          {course.level && (
+            <span className="text-xs text-white/70 uppercase tracking-wider">{course.level}</span>
+          )}
         </div>
       </div>
 
-      {/* Content */}
       <div className="p-6">
-        <p className="text-gray-700 leading-relaxed mb-4">
-          {course.description}
-        </p>
-        <button 
+        <p className="text-gray-700 leading-relaxed mb-4">{course.description}</p>
+        {course.duration && (
+          <p className="text-sm text-gray-500 mb-4">Duration: {course.duration}</p>
+        )}
+        <button
           className="text-[var(--orange)] font-semibold hover:text-[var(--orange)]/80 transition-colors flex items-center gap-2 group-hover:gap-3 transition-all"
         >
-          Learn More
-          <span>→</span>
+          Learn More <span>→</span>
         </button>
       </div>
 
-      {/* Hover Border Effect */}
-      <div 
-        className="absolute inset-0 border-2 border-transparent group-hover:border-[var(--gold)] rounded-2xl transition-all duration-300 pointer-events-none"
-      />
+      <div className="absolute inset-0 border-2 border-transparent group-hover:border-[var(--gold)] rounded-2xl transition-all duration-300 pointer-events-none" />
     </motion.div>
+  );
+}
+
+function CourseSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl overflow-hidden shadow-lg animate-pulse">
+      <div className="h-64 bg-gray-200" />
+      <div className="p-6 space-y-3">
+        <div className="h-4 bg-gray-200 rounded w-3/4" />
+        <div className="h-4 bg-gray-200 rounded w-full" />
+        <div className="h-4 bg-gray-200 rounded w-1/2" />
+      </div>
+    </div>
   );
 }

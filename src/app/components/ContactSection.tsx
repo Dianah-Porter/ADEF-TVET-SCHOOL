@@ -1,19 +1,53 @@
+import { useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { useInView } from 'motion/react';
-import { useRef } from 'react';
-import { Phone, Mail, MapPin, Send } from 'lucide-react';
+import { Phone, Mail, MapPin, Send, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
+import { useApi } from '../../hooks/useApi';
+import { api } from '../../lib/api';
+import { STATIC_SETTINGS } from '../../lib/staticData';
+import type { ContactFormData } from '../../types';
+
+const EMPTY_FORM: ContactFormData = { name: '', email: '', phone: '', message: '', website: '' };
 
 export function ContactSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, amount: 0.2 });
+  const { data: settings } = useApi(api.settings.get, STATIC_SETTINGS);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [form, setForm] = useState<ContactFormData>(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    alert('Thank you for your inquiry! We will get back to you soon.');
+    setSubmitting(true);
+    try {
+      await api.contact.submit(form);
+      toast.success('Message sent!', {
+        description: "Thank you for reaching out. We'll get back to you soon.",
+      });
+      setForm(EMPTY_FORM);
+    } catch (error) {
+      // The API validates the same fields this form does, so its message is
+      // usually the specific one ("Write your message.") rather than a generic
+      // failure — worth showing verbatim. The phone number goes alongside it so
+      // a visitor is never left with no way to reach the school.
+      toast.error(error instanceof Error ? error.message : 'Could not send that message.', {
+        description: `You can also email ${settings.email} or call ${settings.phone}.`,
+        duration: 8000,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -38,50 +72,51 @@ export function ContactSection() {
         </motion.div>
 
         <div className="grid lg:grid-cols-2 gap-12">
-          {/* Contact Information */}
+          {/* Contact info + map */}
           <motion.div
             initial={{ opacity: 0, x: -30 }}
             animate={isInView ? { opacity: 1, x: 0 } : {}}
             transition={{ duration: 0.6, delay: 0.2 }}
           >
             <h3 className="text-2xl font-bold text-[var(--navy)] mb-6">Contact Information</h3>
-            
+
             <div className="space-y-6 mb-8">
               <ContactInfo
                 icon={<Phone className="w-6 h-6" />}
                 title="Phone / WhatsApp"
-                content="+250 789 895 800"
-                href="tel:+250789895800"
+                content={settings.phone}
+                href={`tel:${(settings.whatsapp ?? settings.phone).replace(/\s/g, '')}`}
               />
               <ContactInfo
                 icon={<Mail className="w-6 h-6" />}
                 title="Email"
-                content="adeftvet@gmail.com"
-                href="mailto:adeftvet@gmail.com"
+                content={settings.email}
+                href={`mailto:${settings.email}`}
               />
               <ContactInfo
                 icon={<MapPin className="w-6 h-6" />}
                 title="Location"
-                content="NR5, Kigali, Rwanda"
+                content={settings.address}
               />
             </div>
 
-            {/* Map */}
-            <div className="rounded-xl overflow-hidden shadow-lg h-80">
-              <iframe
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3987.5162978834844!2d30.0588735!3d-1.9440271!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMcKwNTYnMzguNSJTIDMwwrAwMyczMS41IkU!5e0!3m2!1sen!2srw!4v1234567890"
-                width="100%"
-                height="100%"
-                style={{ border: 0 }}
-                allowFullScreen
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                title="ADEF TVET School Location"
-              />
-            </div>
+            {settings.mapEmbedUrl && (
+              <div className="rounded-xl overflow-hidden shadow-lg h-80">
+                <iframe
+                  src={settings.mapEmbedUrl}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="ADEF TVET School Location"
+                />
+              </div>
+            )}
           </motion.div>
 
-          {/* Contact Form */}
+          {/* Contact form */}
           <motion.div
             initial={{ opacity: 0, x: 30 }}
             animate={isInView ? { opacity: 1, x: 0 } : {}}
@@ -89,45 +124,67 @@ export function ContactSection() {
           >
             <div className="bg-gradient-to-br from-[var(--navy)] to-[var(--charcoal)] rounded-2xl p-8 shadow-xl">
               <h3 className="text-2xl font-bold text-white mb-6">Send Us a Message</h3>
-              
+
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <Input
-                    type="text"
-                    placeholder="Your Name"
-                    required
-                    className="bg-white/10 border-white/20 text-white placeholder:text-gray-300"
-                  />
-                </div>
-                <div>
-                  <Input
-                    type="email"
-                    placeholder="Your Email"
-                    required
-                    className="bg-white/10 border-white/20 text-white placeholder:text-gray-300"
-                  />
-                </div>
-                <div>
-                  <Input
-                    type="tel"
-                    placeholder="Phone Number"
-                    className="bg-white/10 border-white/20 text-white placeholder:text-gray-300"
-                  />
-                </div>
-                <div>
-                  <Textarea
-                    placeholder="Your Message"
-                    required
-                    rows={5}
-                    className="bg-white/10 border-white/20 text-white placeholder:text-gray-300 resize-none"
-                  />
-                </div>
+                <Input
+                  name="name"
+                  type="text"
+                  placeholder="Your Name"
+                  required
+                  value={form.name}
+                  onChange={handleChange}
+                  className="bg-white/10 border-white/20 text-white placeholder:text-gray-300"
+                />
+                <Input
+                  name="email"
+                  type="email"
+                  placeholder="Your Email"
+                  required
+                  value={form.email}
+                  onChange={handleChange}
+                  className="bg-white/10 border-white/20 text-white placeholder:text-gray-300"
+                />
+                <Input
+                  name="phone"
+                  type="tel"
+                  placeholder="Phone Number"
+                  value={form.phone ?? ''}
+                  onChange={handleChange}
+                  className="bg-white/10 border-white/20 text-white placeholder:text-gray-300"
+                />
+                {/* Honeypot: positioned off-screen and hidden from assistive
+                    tech, so only a bot that fills every field fills it — which
+                    is how the API knows to discard the submission. */}
+                <input
+                  type="text"
+                  name="website"
+                  value={form.website ?? ''}
+                  onChange={handleChange}
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  className="absolute left-[-9999px] h-0 w-0 opacity-0"
+                />
+                <Textarea
+                  name="message"
+                  placeholder="Your Message"
+                  required
+                  rows={5}
+                  value={form.message}
+                  onChange={handleChange}
+                  className="bg-white/10 border-white/20 text-white placeholder:text-gray-300 resize-none"
+                />
                 <Button
                   type="submit"
+                  disabled={submitting}
                   className="w-full bg-[var(--orange)] hover:bg-[var(--orange)]/90 text-white py-6 text-lg font-semibold"
                 >
-                  <Send className="w-5 h-5 mr-2" />
-                  Send Message
+                  {submitting ? (
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  ) : (
+                    <Send className="w-5 h-5 mr-2" />
+                  )}
+                  {submitting ? 'Sending…' : 'Send Message'}
                 </Button>
               </form>
             </div>
@@ -138,9 +195,21 @@ export function ContactSection() {
   );
 }
 
-function ContactInfo({ icon, title, content, href }: { icon: React.ReactNode; title: string; content: string; href?: string }) {
-  const ContentWrapper = href ? 'a' : 'div';
-  const props = href ? { href, className: 'hover:text-[var(--orange)] transition-colors' } : {};
+function ContactInfo({
+  icon,
+  title,
+  content,
+  href,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  content: string;
+  href?: string;
+}) {
+  const Wrapper = href ? 'a' : 'div';
+  const linkProps = href
+    ? ({ href, className: 'hover:text-[var(--orange)] transition-colors' } as const)
+    : ({} as const);
 
   return (
     <div className="flex items-start gap-4">
@@ -149,9 +218,9 @@ function ContactInfo({ icon, title, content, href }: { icon: React.ReactNode; ti
       </div>
       <div>
         <h4 className="font-semibold text-[var(--navy)] mb-1">{title}</h4>
-        <ContentWrapper {...props}>
+        <Wrapper {...linkProps}>
           <p className="text-gray-600">{content}</p>
-        </ContentWrapper>
+        </Wrapper>
       </div>
     </div>
   );

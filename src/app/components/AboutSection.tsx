@@ -1,12 +1,15 @@
+import { useRef } from 'react';
 import { motion } from 'motion/react';
 import { useInView } from 'motion/react';
-import { useRef } from 'react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-import aboutImg from '../../imports/image-13.png';
+import { useApi } from '../../hooks/useApi';
+import { api } from '../../lib/api';
+import { STATIC_SETTINGS, STATIC_ABOUT_IMAGE } from '../../lib/staticData';
 
 export function AboutSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, amount: 0.3 });
+  const { data: settings, loading } = useApi(api.settings.get, STATIC_SETTINGS);
 
   return (
     <section id="about" className="py-20 bg-white">
@@ -22,13 +25,12 @@ export function AboutSection() {
           >
             <div className="relative overflow-hidden rounded-2xl shadow-2xl">
               <ImageWithFallback
-                src={aboutImg}
-                alt="ADEF TVET School - Referral TVET School in East Africa"
+                src={STATIC_ABOUT_IMAGE}
+                alt="ADEF TVET School – Referral TVET School in East Africa"
                 className="w-full h-[500px] object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[var(--navy)]/50 to-transparent" />
             </div>
-            {/* Decorative Element */}
             <div className="absolute -bottom-6 -right-6 w-40 h-40 bg-[var(--gold)] rounded-2xl -z-10" />
           </motion.div>
 
@@ -41,24 +43,46 @@ export function AboutSection() {
             <div className="inline-block px-4 py-2 bg-[var(--orange)]/10 rounded-full mb-4">
               <span className="text-[var(--orange)] font-semibold">About ADEF TVET</span>
             </div>
-            <h2 className="text-4xl md:text-5xl font-bold text-[var(--navy)] mb-6">
-              Leading Technical & Vocational Training Institution
-            </h2>
-            <p className="text-lg text-gray-700 mb-6 leading-relaxed">
-              ADEF TVET School is dedicated to providing world-class technical and vocational education 
-              that bridges the gap between classroom learning and real-world industry demands.
-            </p>
-            <p className="text-lg text-gray-700 mb-6 leading-relaxed">
-              Our institution focuses on practical, industry-ready education that empowers students with 
-              the hands-on skills and knowledge needed to excel in local and international labor markets.
-            </p>
+
+            {loading ? (
+              <div className="space-y-3 mb-6">
+                <div className="h-10 bg-gray-200 rounded animate-pulse w-full" />
+                <div className="h-10 bg-gray-200 rounded animate-pulse w-3/4" />
+              </div>
+            ) : (
+              <h2 className="text-4xl md:text-5xl font-bold text-[var(--navy)] mb-6">
+                {settings.aboutTitle ?? 'Leading Technical & Vocational Training Institution'}
+              </h2>
+            )}
+
+            {loading ? (
+              <div className="space-y-2 mb-6">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-4 bg-gray-200 rounded animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <>
+                <p className="text-lg text-gray-700 mb-6 leading-relaxed">{settings.aboutText}</p>
+                {settings.aboutText2 && (
+                  <p className="text-lg text-gray-700 mb-6 leading-relaxed">
+                    {settings.aboutText2}
+                  </p>
+                )}
+              </>
+            )}
+
             <div className="grid grid-cols-2 gap-6 mt-8">
               <div className="border-l-4 border-[var(--gold)] pl-4">
-                <div className="text-3xl font-bold text-[var(--navy)]">100+</div>
+                <div className="text-3xl font-bold text-[var(--navy)]">
+                  {settings.graduatesCount}
+                </div>
                 <div className="text-gray-600">Graduates</div>
               </div>
               <div className="border-l-4 border-[var(--orange)] pl-4">
-                <div className="text-3xl font-bold text-[var(--navy)]">3</div>
+                <div className="text-3xl font-bold text-[var(--navy)]">
+                  {settings.programsCount}
+                </div>
                 <div className="text-gray-600">Programs</div>
               </div>
             </div>

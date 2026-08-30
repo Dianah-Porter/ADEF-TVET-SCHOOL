@@ -8,7 +8,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #1a2332;
+  --primary: #1E3A8A;
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.0058 264.53);
   --secondary-foreground: #030213;
@@ -40,12 +40,12 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   
-  /* ADEF Custom Colors */
-  --navy: #1a2332;
-  --charcoal: #2d3748;
-  --gold: #d4a574;
-  --orange: #ff6b35;
-  --dark-overlay: rgba(26, 35, 50, 0.7);
+  /* ADEF Custom Colors — matched to school badge */
+  --navy: #1E3A8A;
+  --charcoal: #152D7A;
+  --gold: #E86B1A;
+  --orange: #F07826;
+  --dark-overlay: rgba(20, 44, 128, 0.72);
 }
 
 .dark {

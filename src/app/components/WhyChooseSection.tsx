@@ -1,44 +1,24 @@
+import { useRef } from 'react';
 import { motion } from 'motion/react';
 import { useInView } from 'motion/react';
-import { useRef } from 'react';
-import { Award, Hand, Users, Wrench, Briefcase } from 'lucide-react';
+import { Award, Hand, Users, Wrench, Briefcase, type LucideIcon } from 'lucide-react';
+import { useApi } from '../../hooks/useApi';
+import { api } from '../../lib/api';
+import { STATIC_FEATURES } from '../../lib/staticData';
+import type { Feature } from '../../types';
 
-const features = [
-  {
-    icon: Award,
-    title: 'Certified & Accredited Programs',
-    description: 'Nationally recognized qualifications that meet industry standards',
-    color: 'var(--gold)',
-  },
-  {
-    icon: Hand,
-    title: 'Hands-On Practical Learning',
-    description: 'Real-world experience through intensive practical training sessions',
-    color: 'var(--orange)',
-  },
-  {
-    icon: Users,
-    title: 'Skilled Professional Instructors',
-    description: 'Learn from experienced industry professionals and certified trainers',
-    color: 'var(--navy)',
-  },
-  {
-    icon: Wrench,
-    title: 'Industry Standard Equipment',
-    description: 'Train with the same tools and technology used in the field',
-    color: 'var(--charcoal)',
-  },
-  {
-    icon: Briefcase,
-    title: 'Career-Focused Training',
-    description: 'Curriculum designed to meet local and international job market demands',
-    color: 'var(--gold)',
-  },
-];
+const ICON_MAP: Record<string, LucideIcon> = { Award, Hand, Users, Wrench, Briefcase };
+const COLOR_MAP: Record<string, string> = {
+  gold: 'var(--gold)',
+  orange: 'var(--orange)',
+  navy: 'var(--navy)',
+  charcoal: 'var(--charcoal)',
+};
 
 export function WhyChooseSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, amount: 0.2 });
+  const { data: features, loading } = useApi(api.features.list, STATIC_FEATURES);
 
   return (
     <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
@@ -62,17 +42,28 @@ export function WhyChooseSection() {
         </motion.div>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {features.map((feature, index) => (
-            <FeatureCard key={feature.title} feature={feature} index={index} isInView={isInView} />
-          ))}
+          {loading
+            ? Array.from({ length: 5 }).map((_, i) => <FeatureSkeleton key={i} />)
+            : features.map((feature, index) => (
+                <FeatureCard key={feature.id} feature={feature} index={index} isInView={isInView} />
+              ))}
         </div>
       </div>
     </section>
   );
 }
 
-function FeatureCard({ feature, index, isInView }: { feature: typeof features[0]; index: number; isInView: boolean }) {
-  const Icon = feature.icon;
+function FeatureCard({
+  feature,
+  index,
+  isInView,
+}: {
+  feature: Feature;
+  index: number;
+  isInView: boolean;
+}) {
+  const Icon = ICON_MAP[feature.iconName] ?? Award;
+  const color = COLOR_MAP[feature.accentColor] ?? 'var(--gold)';
 
   return (
     <motion.div
@@ -83,12 +74,25 @@ function FeatureCard({ feature, index, isInView }: { feature: typeof features[0]
     >
       <div
         className="w-14 h-14 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300"
-        style={{ backgroundColor: `${feature.color}15` }}
+        style={{ backgroundColor: `${color}18` }}
       >
-        <Icon className="w-7 h-7" style={{ color: feature.color }} />
+        <Icon className="w-7 h-7" style={{ color }} />
       </div>
       <h3 className="text-xl font-bold text-[var(--navy)] mb-3">{feature.title}</h3>
       <p className="text-gray-600 leading-relaxed">{feature.description}</p>
     </motion.div>
+  );
+}
+
+function FeatureSkeleton() {
+  return (
+    <div className="bg-white rounded-xl p-6 shadow-md border border-gray-100 animate-pulse">
+      <div className="w-14 h-14 bg-gray-200 rounded-lg mb-4" />
+      <div className="h-5 bg-gray-200 rounded w-3/4 mb-3" />
+      <div className="space-y-2">
+        <div className="h-4 bg-gray-200 rounded" />
+        <div className="h-4 bg-gray-200 rounded w-5/6" />
+      </div>
+    </div>
   );
 }
