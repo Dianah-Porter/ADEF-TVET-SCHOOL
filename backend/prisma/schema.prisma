@@ -44,6 +44,8 @@ enum AuditAction {
   DELETE
   LOGIN
   LOGIN_FAILED
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET
 }
 
 // ─── Models ─────────────────────────────────────────────────────────────────
@@ -65,6 +67,7 @@ model AdminUser {
   announcements Announcement[]
   refreshTokens RefreshToken[]
   auditLogs     AuditLog[]
+  passwordResets PasswordResetToken[]
 
   @@map("admin_users")
 }
@@ -192,4 +195,238 @@ model AuditLog {
   @@index([createdAt])
   @@index([entity, entityId])
   @@map("audit_logs")
+}
+
+// ─── Website content ────────────────────────────────────────────────────────
+// Everything below is what the public site renders. It used to be hard-coded
+// in the frontend; moving it here is what lets staff edit the site without a
+// redeploy. Each model carries `sortOrder` and `published` for the same reason:
+// the dashboard needs to reorder items and to take one off the site without
+// destroying it.
+
+/// Accent used by a card on the public site. An enum rather than a free-form
+/// colour so staff cannot pick something that clashes with the school palette.
+enum AccentColor {
+  ORANGE
+  GOLD
+  NAVY
+  CHARCOAL
+}
+
+enum CourseIcon {
+  FLAME
+  HAMMER
+  BOX
+}
+
+enum FeatureIcon {
+  AWARD
+  HAND
+  USERS
+  WRENCH
+  BRIEFCASE
+}
+
+/// A trade taught at the school, shown on the Courses section.
+model Course {
+  id          String  @id @default(uuid()) @db.Uuid
+  title       String
+  /// Stable public identifier, kept when the title is edited.
+  slug        String  @unique
+  description String
+  level       String?
+  duration    String?
+
+  icon        CourseIcon  @default(FLAME)
+  accentColor AccentColor @default(ORANGE)
+
+  imageKey String?
+  imageUrl String?
+
+  sortOrder Int     @default(0)
+  published Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published, sortOrder])
+  @@map("courses")
+}
+
+/// A graduate's quote on the Testimonials section.
+model Testimonial {
+  id     String @id @default(uuid()) @db.Uuid
+  name   String
+  /// Free text such as "Welding L3 Graduate" — not a relation to Course,
+  /// because a graduate's course may since have been renamed or removed and
+  /// their quote should still read correctly.
+  course String
+  text   String
+  rating Int    @default(5)
+
+  avatarKey String?
+  avatarUrl String?
+
+  sortOrder Int     @default(0)
+  published Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published, sortOrder])
+  @@map("testimonials")
+}
+
+/// One image in the rotating hero at the top of the site.
+model HeroSlide {
+  id       String  @id @default(uuid()) @db.Uuid
+  headline String?
+  subtext  String?
+
+  storageKey String @unique
+  imageUrl   String
+
+  width     Int
+  height    Int
+  sizeBytes Int
+  mimeType  String
+
+  sortOrder Int     @default(0)
+  published Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published, sortOrder])
+  @@map("hero_slides")
+}
+
+/// A selling point on the "Why choose ADEF" section.
+model Feature {
+  id          String      @id @default(uuid()) @db.Uuid
+  title       String
+  description String
+  icon        FeatureIcon @default(AWARD)
+  accentColor AccentColor @default(GOLD)
+
+  sortOrder Int     @default(0)
+  published Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published, sortOrder])
+  @@map("features")
+}
+
+/// One row of the opening-hours table.
+model WorkingHours {
+  id  String @id @default(uuid()) @db.Uuid
+  /// A label, not a weekday enum: the school publishes ranges such as
+  /// "Monday – Saturday" as a single row.
+  day String
+
+  openTime  String
+  closeTime String?
+  /// False renders the day as "Closed" and hides the times.
+  isOpen    Boolean @default(true)
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
+  @@map("working_hours")
+}
+
+/// Single row of site-wide text and contact details.
+///
+/// A one-row table rather than a key/value store: the fields are a fixed,
+/// known set, and this way they stay typed and the dashboard can render one
+/// ordinary form instead of a list of untyped strings.
+model SiteSettings {
+  /// Always "site". The default is what makes upsert-by-id safe.
+  id String @id @default("site")
+
+  schoolName String
+  tagline    String?
+
+  vision  String
+  mission String
+
+  aboutTitle String?
+  aboutText  String
+  aboutText2 String?
+
+  graduatesCount String
+  programsCount  Int
+
+  phone    String
+  whatsapp String?
+  email    String
+  address  String
+
+  mapEmbedUrl  String?
+  instagramUrl String?
+  twitterUrl   String?
+
+  workingHoursNote String?
+
+  updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
+}
+
+enum ContactStatus {
+  NEW
+  READ
+  REPLIED
+  ARCHIVED
+}
+
+/// An enquiry submitted through the website's contact form.
+model ContactMessage {
+  id      String  @id @default(uuid()) @db.Uuid
+  name    String
+  email   String
+  phone   String?
+  message String
+
+  status ContactStatus @default(NEW)
+
+  /// Kept for abuse investigation, not shown in the dashboard.
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("contact_messages")
+}
+
+/// A single-use password reset link.
+///
+/// Like refresh tokens, only the hash is stored: the plaintext exists solely
+/// inside the email that was sent, so a database leak cannot be used to take
+/// over accounts.
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  tokenHash String    @unique
+  userId    String    @db.Uuid
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
