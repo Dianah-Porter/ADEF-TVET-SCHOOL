@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Navigate, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate } from 'react-router';
 import { Eye, EyeOff, Lock } from 'lucide-react';
 import { ApiError } from '../lib/api';
 import { useAuth } from './admin-context';
+import { AuthScreen, FormBanner } from './AuthScreen';
 import { Button, Field, Spinner, focusRing, inputClass } from './ui';
 
 export function LoginPage() {
@@ -47,92 +48,76 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--navy)] px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <span className="block text-3xl font-bold tracking-tight text-white">ADEF</span>
-          <span className="mt-1 block text-[11px] font-medium uppercase tracking-[0.2em] text-[var(--gold)]">
-            TVET School · Admin
-          </span>
+    <AuthScreen
+      icon={<Lock className="h-4 w-4" aria-hidden />}
+      title="Sign in"
+      subtitle="Staff accounts only"
+      footer={
+        <Link to="/" className="hover:text-white/80">
+          ← Back to the website
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit} noValidate>
+        {formError && <FormBanner tone="error">{formError}</FormBanner>}
+
+        <div className="space-y-4">
+          <Field label="Email" error={fieldErrors.email} required>
+            <input
+              type="email"
+              name="email"
+              autoComplete="username"
+              autoFocus
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className={inputClass}
+              placeholder="you@adef.rw"
+              aria-invalid={Boolean(fieldErrors.email)}
+            />
+          </Field>
+
+          <Field label="Password" error={fieldErrors.password} required>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className={`${inputClass} pr-9`}
+                aria-invalid={Boolean(fieldErrors.password)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className={`absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-slate-400 hover:text-slate-700 ${focusRing}`}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" aria-hidden />
+                )}
+              </button>
+            </div>
+          </Field>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          noValidate
-          className="rounded-2xl bg-white p-6 shadow-2xl sm:p-7"
-        >
-          <div className="mb-5 flex items-center gap-2.5">
-            <span className="rounded-lg bg-[var(--gold)]/12 p-2 text-[var(--gold)]">
-              <Lock className="h-4 w-4" aria-hidden />
-            </span>
-            <div>
-              <h1 className="text-base font-semibold text-[var(--navy)]">Sign in</h1>
-              <p className="text-xs text-slate-500">Staff accounts only</p>
-            </div>
-          </div>
+        <Button type="submit" loading={submitting} className="mt-5 w-full">
+          {submitting ? 'Signing in' : 'Sign in'}
+        </Button>
 
-          {formError && (
-            <div
-              role="alert"
-              className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800"
-            >
-              {formError}
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <Field label="Email" error={fieldErrors.email} required>
-              <input
-                type="email"
-                name="email"
-                autoComplete="username"
-                autoFocus
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className={inputClass}
-                placeholder="you@adef.rw"
-                aria-invalid={Boolean(fieldErrors.email)}
-              />
-            </Field>
-
-            <Field label="Password" error={fieldErrors.password} required>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className={`${inputClass} pr-10`}
-                  aria-invalid={Boolean(fieldErrors.password)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((value) => !value)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className={`absolute right-1 top-1/2 -translate-y-1/2 rounded p-2 text-slate-400 hover:text-slate-700 ${focusRing}`}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" aria-hidden />
-                  ) : (
-                    <Eye className="h-4 w-4" aria-hidden />
-                  )}
-                </button>
-              </div>
-            </Field>
-          </div>
-
-          <Button type="submit" loading={submitting} className="mt-6 w-full">
-            {submitting ? 'Signing in' : 'Sign in'}
-          </Button>
-        </form>
-
-        <p className="mt-5 text-center text-xs text-white/45">
-          Lost access? Ask a super administrator to reset your account.
+        <p className="mt-4 text-center">
+          <Link
+            to="/admin/forgot-password"
+            className={`rounded text-[12px] text-slate-500 underline-offset-2 hover:text-[var(--orange)] hover:underline ${focusRing}`}
+          >
+            Forgotten your password?
+          </Link>
         </p>
-      </div>
-    </div>
+      </form>
+    </AuthScreen>
   );
 }
