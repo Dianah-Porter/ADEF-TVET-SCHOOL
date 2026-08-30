@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ImageWithFallback } from './figma/ImageWithFallback';
+import adefBadge from '../../imports/adef_badge.jpg';
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -28,13 +30,14 @@ export function Navbar() {
     { label: 'About', id: 'about' },
     { label: 'Courses', id: 'courses' },
     { label: 'Gallery', id: 'gallery' },
-    { label: 'News', id: 'news' },
     { label: 'Contact', id: 'contact' },
   ];
 
   return (
     <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      // top-9 clears the StaffBar above it. The two heights are coupled: if
+      // that bar changes height this must change with it.
+      className={`fixed top-9 left-0 right-0 z-50 transition-all duration-300 ${
         isScrolled ? 'bg-[var(--navy)] shadow-lg' : 'bg-transparent'
       }`}
     >
@@ -44,12 +47,21 @@ export function Navbar() {
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="flex items-center cursor-pointer"
+            className="flex items-center gap-3 cursor-pointer"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           >
-            <div className="flex flex-col">
-              <span className="text-2xl font-bold text-white">ADEF</span>
-              <span className="text-xs text-[var(--gold)] tracking-wider">TVET SCHOOL</span>
+            {/* School Badge */}
+            <div className="w-12 h-12 rounded-full bg-white p-0.5 shadow-lg flex-shrink-0 ring-2 ring-[var(--gold)]/60">
+              <ImageWithFallback
+                src={adefBadge}
+                alt="ADEF TVET School Badge"
+                className="w-full h-full object-contain rounded-full"
+              />
+            </div>
+            {/* School Name */}
+            <div className="flex flex-col leading-tight">
+              <span className="text-lg font-extrabold text-white tracking-wide leading-none">ADEF TVET SCHOOL</span>
+              <span className="text-[10px] text-[var(--gold)] tracking-[0.18em] uppercase mt-0.5">Kigali, Rwanda</span>
             </div>
           </motion.div>
 

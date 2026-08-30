@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { Toaster } from 'sonner';
+import { StaffBar } from './components/StaffBar';
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { AboutSection } from './components/AboutSection';
@@ -20,6 +22,7 @@ export default function App() {
 
   return (
     <div id="home" className="min-h-screen bg-white">
+      <StaffBar />
       <Navbar />
       <main>
         <HeroSection />
@@ -34,6 +37,7 @@ export default function App() {
         <ContactSection />
       </main>
       <Footer />
+      <Toaster position="bottom-right" richColors closeButton />
     </div>
   );
 }
