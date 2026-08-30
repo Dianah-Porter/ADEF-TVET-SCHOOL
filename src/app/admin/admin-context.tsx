@@ -18,6 +18,13 @@ interface AuthState {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Saves name/email and updates the header without a reload. */
+  updateProfile: (patch: { name?: string; email?: string }) => Promise<void>;
+  changePassword: (input: {
+    currentPassword: string;
+    password: string;
+    confirmPassword: string;
+  }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -65,9 +72,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const updateProfile = useCallback(async (patch: { name?: string; email?: string }) => {
+    const { user: updated } = await api.auth.updateProfile(patch);
+    // Held in state as well as returned, so the name in the top bar changes
+    // the moment the form is saved rather than on the next page load.
+    setUser(updated);
+  }, []);
+
+  const changePassword = useCallback(
+    async (input: { currentPassword: string; password: string; confirmPassword: string }) => {
+      await api.auth.changePassword(input);
+      // The API deliberately leaves this session signed in, so there is
+      // nothing to update here — the user carries on where they were.
+    },
+    [],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, signIn, signOut }),
-    [user, loading, signIn, signOut],
+    () => ({ user, loading, signIn, signOut, updateProfile, changePassword }),
+    [user, loading, signIn, signOut, updateProfile, changePassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

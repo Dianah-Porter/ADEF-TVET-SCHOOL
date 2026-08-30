@@ -8,9 +8,9 @@
  * to page scripts.
  */
 
-const API_BASE: string =
-  (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ??
-  'http://localhost:4000/api/v1';
+import { API_BASE } from '../../lib/apiBase';
+
+export { API_BASE };
 
 let accessToken: string | null = null;
 
@@ -231,7 +231,165 @@ export interface DashboardStats {
   recentActivity: { id: string; action: string; entity: string; actor: string; at: string }[];
 }
 
+export type AccentColor = 'ORANGE' | 'GOLD' | 'NAVY' | 'CHARCOAL';
+export type CourseIcon = 'FLAME' | 'HAMMER' | 'BOX';
+export type FeatureIcon = 'AWARD' | 'HAND' | 'USERS' | 'WRENCH' | 'BRIEFCASE';
+
+/**
+ * The admin view of a content record.
+ *
+ * Deliberately the raw row, not the public projection: the dashboard edits
+ * `icon: 'FLAME'`, while the website receives `iconName: 'Flame'`. Editing the
+ * stored value rather than the rendered one keeps the form honest about what
+ * it is actually changing.
+ */
+export interface AdminCourse {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  level: string | null;
+  duration: string | null;
+  icon: CourseIcon;
+  accentColor: AccentColor;
+  imageUrl: string | null;
+  sortOrder: number;
+  published: boolean;
+  updatedAt: string;
+}
+
+export interface AdminTestimonial {
+  id: string;
+  name: string;
+  course: string;
+  text: string;
+  rating: number;
+  avatarUrl: string | null;
+  sortOrder: number;
+  published: boolean;
+  updatedAt: string;
+}
+
+export interface AdminHeroSlide {
+  id: string;
+  headline: string | null;
+  subtext: string | null;
+  imageUrl: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  sortOrder: number;
+  published: boolean;
+  updatedAt: string;
+}
+
+export interface AdminFeature {
+  id: string;
+  title: string;
+  description: string;
+  icon: FeatureIcon;
+  accentColor: AccentColor;
+  sortOrder: number;
+  published: boolean;
+  updatedAt: string;
+}
+
+export interface AdminWorkingHours {
+  id: string;
+  day: string;
+  openTime: string;
+  closeTime: string | null;
+  isOpen: boolean;
+  sortOrder: number;
+}
+
+export interface AdminSiteSettings {
+  schoolName: string;
+  tagline: string | null;
+  vision: string;
+  mission: string;
+  aboutTitle: string | null;
+  aboutText: string;
+  aboutText2: string | null;
+  graduatesCount: string;
+  programsCount: number;
+  phone: string;
+  whatsapp: string | null;
+  email: string;
+  address: string;
+  mapEmbedUrl: string | null;
+  instagramUrl: string | null;
+  twitterUrl: string | null;
+  workingHoursNote: string | null;
+  updatedAt: string;
+}
+
+export type ContactStatus = 'NEW' | 'READ' | 'REPLIED' | 'ARCHIVED';
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  message: string;
+  status: ContactStatus;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface InboxCounts {
+  NEW: number;
+  READ: number;
+  REPLIED: number;
+  ARCHIVED: number;
+  total: number;
+}
+
 // ─── Endpoints ──────────────────────────────────────────────────────────────
+
+/**
+ * Builds the client for one content type.
+ *
+ * The six content endpoints are identical apart from their path and row type,
+ * so they are generated rather than written out six times — which also means a
+ * change to how, say, reordering is called happens in exactly one place.
+ *
+ * `toFormData` is supplied for the types that carry an image: those endpoints
+ * take multipart bodies, and a plain JSON body would silently drop the file.
+ */
+function contentResource<T, TCreate extends object, TUpdate extends object>(
+  path: string,
+  options: { multipart?: boolean } = {},
+) {
+  const encode = (input: TCreate | TUpdate, image?: File | null): unknown => {
+    if (!options.multipart) return input;
+
+    const form = new FormData();
+
+    for (const [key, value] of Object.entries(input)) {
+      // Skipping null/undefined matters: FormData stringifies them, so a
+      // missing optional field would arrive as the literal text "null".
+      if (value === undefined || value === null) continue;
+      form.append(key, String(value));
+    }
+
+    if (image) form.append('image', image);
+
+    return form;
+  };
+
+  return {
+    list: (params = '') => request<T[]>(`${path}${params}`),
+    create: (input: TCreate, image?: File | null) =>
+      request<T>(path, { method: 'POST', body: encode(input, image) }),
+    update: (id: string, input: TUpdate, image?: File | null) =>
+      request<T>(`${path}/${id}`, { method: 'PATCH', body: encode(input, image) }),
+    remove: (id: string) => request<void>(`${path}/${id}`, { method: 'DELETE' }),
+    reorder: (ids: string[]) =>
+      request<{ reordered: number }>(`${path}/reorder`, { method: 'PATCH', body: { ids } }),
+  };
+}
+
 
 export const api = {
   auth: {
@@ -244,6 +402,37 @@ export const api = {
     logout: () => request<{ signedOut: boolean }>('/auth/logout', { method: 'POST' }),
     me: () => request<{ user: AdminUser }>('/auth/me'),
     restore: refreshSession,
+
+    updateProfile: (patch: { name?: string; email?: string }) =>
+      request<{ user: AdminUser }>('/auth/me', { method: 'PATCH', body: patch }),
+
+    changePassword: (input: {
+      currentPassword: string;
+      password: string;
+      confirmPassword: string;
+    }) => request<{ changed: boolean }>('/auth/change-password', { method: 'POST', body: input }),
+
+    // The reset endpoints are the only ones called while signed out, so they
+    // must never trigger a refresh-and-retry on 401.
+    forgotPassword: (email: string) =>
+      request<{ message: string }>('/auth/forgot-password', {
+        method: 'POST',
+        body: { email },
+        retryOnExpiry: false,
+      }),
+
+    checkResetToken: (token: string) =>
+      request<{ email: string; name: string }>(
+        `/auth/reset-password?token=${encodeURIComponent(token)}`,
+        { retryOnExpiry: false },
+      ),
+
+    resetPassword: (input: { token: string; password: string; confirmPassword: string }) =>
+      request<{ reset: boolean }>('/auth/reset-password', {
+        method: 'POST',
+        body: input,
+        retryOnExpiry: false,
+      }),
   },
 
   gallery: {
@@ -292,4 +481,83 @@ export const api = {
   },
 
   stats: () => request<DashboardStats>('/admin/stats'),
+
+  // ─── Website content ──────────────────────────────────────────────────────
+
+  courses: contentResource<
+    AdminCourse,
+    {
+      title: string;
+      description: string;
+      level?: string;
+      duration?: string;
+      icon: CourseIcon;
+      accentColor: AccentColor;
+      published: boolean;
+    },
+    Partial<{
+      title: string;
+      description: string;
+      level: string;
+      duration: string;
+      icon: CourseIcon;
+      accentColor: AccentColor;
+      published: boolean;
+    }>
+  >('/admin/courses', { multipart: true }),
+
+  testimonials: contentResource<
+    AdminTestimonial,
+    { name: string; course: string; text: string; rating: number; published: boolean },
+    Partial<{ name: string; course: string; text: string; rating: number; published: boolean }>
+  >('/admin/testimonials', { multipart: true }),
+
+  hero: contentResource<
+    AdminHeroSlide,
+    { headline?: string; subtext?: string; published: boolean },
+    Partial<{ headline: string; subtext: string; published: boolean }>
+  >('/admin/hero-slides', { multipart: true }),
+
+  features: contentResource<
+    AdminFeature,
+    {
+      title: string;
+      description: string;
+      icon: FeatureIcon;
+      accentColor: AccentColor;
+      published: boolean;
+    },
+    Partial<{
+      title: string;
+      description: string;
+      icon: FeatureIcon;
+      accentColor: AccentColor;
+      published: boolean;
+    }>
+  >('/admin/features'),
+
+  workingHours: contentResource<
+    AdminWorkingHours,
+    { day: string; openTime: string; closeTime?: string | null; isOpen: boolean },
+    Partial<{ day: string; openTime: string; closeTime: string | null; isOpen: boolean }>
+  >('/admin/working-hours'),
+
+  settings: {
+    get: () => request<AdminSiteSettings>('/admin/settings'),
+    update: (patch: Partial<AdminSiteSettings>) =>
+      request<AdminSiteSettings>('/admin/settings', { method: 'PATCH', body: patch }),
+  },
+
+  // ─── Contact inbox ────────────────────────────────────────────────────────
+
+  contact: {
+    list: (params = '') =>
+      requestWithMeta<ContactMessage[]>(`/admin/contact${params}`) as Promise<{
+        data: ContactMessage[];
+        meta: PageMeta & { counts: InboxCounts };
+      }>,
+    setStatus: (id: string, status: ContactStatus) =>
+      request<ContactMessage>(`/admin/contact/${id}`, { method: 'PATCH', body: { status } }),
+    remove: (id: string) => request<void>(`/admin/contact/${id}`, { method: 'DELETE' }),
+  },
 };
