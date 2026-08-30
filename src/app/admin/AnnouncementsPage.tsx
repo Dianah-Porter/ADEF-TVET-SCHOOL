@@ -6,8 +6,11 @@ import {
   Paperclip,
   Pencil,
   Pin,
+  PinOff,
   Plus,
+  Send,
   Trash2,
+  Undo2,
   Upload,
   X,
 } from 'lucide-react';
@@ -21,16 +24,36 @@ import {
 import { PageHeader } from './AdminLayout';
 import { useToast } from './admin-context';
 import {
+  Badge,
   Button,
+  ConfirmDialog,
+  DropdownMenu,
   EmptyState,
   ErrorState,
   Field,
+  IconButton,
+  MenuItem,
+  MenuSeparator,
   Modal,
-  Spinner,
+  Panel,
+  RowActions,
+  SearchInput,
+  SegmentedControl,
+  Select,
   StatusPill,
+  Switch,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  Table,
+  TableSkeleton,
+  Toolbar,
   focusRing,
   formatBytes,
   formatDate,
+  hairline,
   inputClass,
 } from './ui';
 
@@ -39,6 +62,14 @@ const TYPES: { value: AnnouncementType; label: string }[] = [
   { value: 'EVENT', label: 'Event' },
   { value: 'NOTICE', label: 'Notice' },
 ];
+
+const TYPE_TONE: Record<AnnouncementType, 'info' | 'warning' | 'neutral'> = {
+  NEWS: 'info',
+  EVENT: 'warning',
+  NOTICE: 'neutral',
+};
+
+type StatusFilter = '' | AnnouncementStatus;
 
 export function AnnouncementsPage() {
   const { notify } = useToast();
@@ -50,26 +81,46 @@ export function AnnouncementsPage() {
   const [editing, setEditing] = useState<Announcement | 'new' | null>(null);
   const [deleting, setDeleting] = useState<Announcement | null>(null);
 
-  const statusFilter = searchParams.get('status') ?? '';
+  const [search, setSearch] = useState('');
+  const [type, setType] = useState<'' | AnnouncementType>('');
+
+  // The status filter lives in the URL so the overview's "Review drafts" card
+  // can link straight to it, and so a filtered view can be shared or bookmarked.
+  const statusFilter = (searchParams.get('status') ?? '') as StatusFilter;
+
+  const setStatusFilter = (next: StatusFilter) => {
+    if (next) searchParams.set('status', next);
+    else searchParams.delete('status');
+    setSearchParams(searchParams, { replace: true });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    const params = new URLSearchParams({ limit: '50' });
+    if (statusFilter) params.set('status', statusFilter);
+    if (type) params.set('type', type);
+    if (search.trim()) params.set('search', search.trim());
+
     try {
-      const query = statusFilter ? `?status=${statusFilter}&limit=50` : '?limit=50';
-      const result = await api.announcements.listAdmin(query);
+      const result = await api.announcements.listAdmin(`?${params.toString()}`);
       setItems(result.data);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not reach the server.');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [search, statusFilter, type]);
 
   useEffect(() => {
     document.title = 'Announcements · ADEF Admin';
-    void load();
-  }, [load]);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), search ? 300 : 0);
+    return () => window.clearTimeout(timer);
+  }, [load, search]);
 
   // Deep link from the overview's "Write an announcement" action.
   useEffect(() => {
@@ -80,181 +131,276 @@ export function AnnouncementsPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  const togglePin = async (item: Announcement) => {
+  const counts = {
+    all: items.length,
+    published: items.filter((item) => item.status === 'PUBLISHED').length,
+    drafts: items.filter((item) => item.status === 'DRAFT').length,
+  };
+
+  const patch = async (item: Announcement, changes: Partial<Announcement>, message: string) => {
     try {
-      await api.announcements.update(item.id, { pinned: !item.pinned });
-      notify(item.pinned ? 'Unpinned.' : 'Pinned to the top.', 'success');
+      await api.announcements.update(item.id, changes);
+      notify(message, 'success');
       await load();
     } catch {
       notify('Could not change that announcement.', 'error');
     }
   };
 
-  const setStatus = async (item: Announcement, status: AnnouncementStatus) => {
-    try {
-      await api.announcements.update(item.id, { status });
-      notify(
-        status === 'PUBLISHED'
-          ? 'Published — it is now on the website.'
-          : 'Moved back to draft and removed from the website.',
-        'success',
-      );
-      await load();
-    } catch {
-      notify('Could not change that announcement.', 'error');
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (!deleting) return;
-    try {
-      await api.announcements.remove(deleting.id);
-      notify('Announcement deleted.', 'success');
-      setDeleting(null);
-      await load();
-    } catch {
-      notify('Could not delete that announcement.', 'error');
-    }
-  };
+  const isFiltered = Boolean(statusFilter || type || search.trim());
 
   return (
     <>
       <PageHeader
         title="Announcements"
-        description="Post news, events and notices. Attach PDFs such as timetables or forms."
+        description="News, events and notices. Attach PDFs such as timetables or forms."
         action={
           <Button onClick={() => setEditing('new')}>
-            <Plus className="h-4 w-4" aria-hidden />
+            <Plus className="h-3.5 w-3.5" aria-hidden />
             New announcement
           </Button>
         }
       />
 
-      <div className="mb-5 flex flex-wrap gap-2" role="group" aria-label="Filter by status">
-        {[
-          { value: '', label: 'All' },
-          { value: 'PUBLISHED', label: 'Published' },
-          { value: 'DRAFT', label: 'Drafts' },
-        ].map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={statusFilter === option.value}
-            onClick={() => {
-              if (option.value) searchParams.set('status', option.value);
-              else searchParams.delete('status');
-              setSearchParams(searchParams, { replace: true });
-            }}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${focusRing} ${
-              statusFilter === option.value
-                ? 'bg-[var(--navy)] text-white'
-                : 'bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-
-      {loading && <Spinner label="Loading announcements" />}
-      {error && !loading && <ErrorState message={error} onRetry={load} />}
-
-      {!loading && !error && items.length === 0 && (
-        <EmptyState
-          icon={<Megaphone className="h-8 w-8" />}
-          title={statusFilter ? 'Nothing here' : 'No announcements yet'}
-          description={
-            statusFilter
-              ? 'Try a different filter.'
-              : 'Write your first announcement. It stays a draft until you publish it, so nothing goes live by accident.'
-          }
-          action={
-            !statusFilter && (
-              <Button onClick={() => setEditing('new')}>
-                <Plus className="h-4 w-4" aria-hidden />
-                Write the first one
-              </Button>
-            )
-          }
+      <Toolbar>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search titles…"
+          className="w-full sm:max-w-xs"
         />
-      )}
 
-      {!loading && !error && items.length > 0 && (
-        <ul className="space-y-3">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                    <StatusPill status={item.status} />
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-600">
-                      {item.type.toLowerCase()}
-                    </span>
-                    {item.pinned && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--gold)]/15 px-2 py-0.5 text-[11px] font-medium text-[#8a5d2c]">
-                        <Pin className="h-3 w-3" aria-hidden />
-                        Pinned
-                      </span>
-                    )}
-                  </div>
+        <SegmentedControl<StatusFilter>
+          label="Filter by status"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value: '', label: 'All', count: statusFilter === '' ? counts.all : undefined },
+            {
+              value: 'PUBLISHED',
+              label: 'Published',
+              count: statusFilter === '' ? counts.published : undefined,
+            },
+            {
+              value: 'DRAFT',
+              label: 'Drafts',
+              count: statusFilter === '' ? counts.drafts : undefined,
+            },
+          ]}
+        />
 
-                  <h2 className="truncate text-base font-semibold text-[var(--navy)]">
-                    {item.title}
-                  </h2>
-
-                  {item.excerpt && (
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-600">{item.excerpt}</p>
-                  )}
-
-                  <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                    <span>
-                      {item.status === 'PUBLISHED'
-                        ? `Published ${formatDate(item.publishedAt)}`
-                        : `Edited ${formatDate(item.updatedAt)}`}
-                    </span>
-                    {item.author && <span>by {item.author.name}</span>}
-                    {item.attachments.length > 0 && (
-                      <span className="inline-flex items-center gap-1">
-                        <Paperclip className="h-3 w-3" aria-hidden />
-                        {item.attachments.length} PDF
-                        {item.attachments.length === 1 ? '' : 's'}
-                      </span>
-                    )}
-                  </p>
-                </div>
-
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant={item.status === 'PUBLISHED' ? 'secondary' : 'primary'}
-                    onClick={() =>
-                      void setStatus(item, item.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED')
-                    }
-                  >
-                    {item.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => void togglePin(item)}>
-                    <Pin className="h-3.5 w-3.5" aria-hidden />
-                    <span className="sr-only sm:not-sr-only">
-                      {item.pinned ? 'Unpin' : 'Pin'}
-                    </span>
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEditing(item)}>
-                    <Pencil className="h-3.5 w-3.5" aria-hidden />
-                    <span className="sr-only sm:not-sr-only">Edit</span>
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setDeleting(item)}>
-                    <Trash2 className="h-3.5 w-3.5 text-red-600" aria-hidden />
-                    <span className="sr-only">Delete</span>
-                  </Button>
-                </div>
-              </div>
-            </li>
+        <Select
+          value={type}
+          onChange={(event) => setType(event.target.value as '' | AnnouncementType)}
+          aria-label="Filter by type"
+          className="w-auto min-w-[9rem]"
+        >
+          <option value="">All types</option>
+          {TYPES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
           ))}
-        </ul>
+        </Select>
+      </Toolbar>
+
+      {error && !loading ? (
+        <ErrorState message={error} onRetry={load} />
+      ) : (
+        <Panel>
+          {loading ? (
+            <Table>
+              <TableSkeleton rows={5} columns={5} />
+            </Table>
+          ) : items.length === 0 ? (
+            <EmptyState
+              icon={<Megaphone className="h-7 w-7" />}
+              title={isFiltered ? 'Nothing matches' : 'No announcements yet'}
+              description={
+                isFiltered
+                  ? 'No announcements match the current search or filters.'
+                  : 'Write your first announcement. It stays a draft until you publish it, so nothing goes live by accident.'
+              }
+              action={
+                isFiltered ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setSearch('');
+                      setType('');
+                      setStatusFilter('');
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                ) : (
+                  <Button onClick={() => setEditing('new')}>
+                    <Plus className="h-3.5 w-3.5" aria-hidden />
+                    Write the first one
+                  </Button>
+                )
+              }
+            />
+          ) : (
+            <Table>
+              <THead>
+                <TH className="w-[46%]">Title</TH>
+                <TH>Type</TH>
+                <TH>Status</TH>
+                <TH>Date</TH>
+                <TH>Author</TH>
+                <TH align="right" />
+              </THead>
+              <TBody>
+                {items.map((item) => (
+                  <TR key={item.id} className="group">
+                    <TD>
+                      <button
+                        type="button"
+                        onClick={() => setEditing(item)}
+                        className={`block w-full min-w-0 rounded text-left ${focusRing}`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          {item.pinned && (
+                            <Pin
+                              className="h-3 w-3 shrink-0 text-[var(--gold)]"
+                              aria-label="Pinned"
+                            />
+                          )}
+                          <span className="truncate font-medium text-slate-900">{item.title}</span>
+                        </span>
+                        {item.excerpt && (
+                          <span className="mt-0.5 line-clamp-1 block text-[12px] text-slate-500">
+                            {item.excerpt}
+                          </span>
+                        )}
+                      </button>
+                    </TD>
+
+                    <TD>
+                      <Badge tone={TYPE_TONE[item.type]}>
+                        {TYPES.find((option) => option.value === item.type)?.label}
+                      </Badge>
+                    </TD>
+
+                    <TD>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={item.status === 'PUBLISHED'}
+                          onChange={() =>
+                            void patch(
+                              item,
+                              { status: item.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED' },
+                              item.status === 'PUBLISHED'
+                                ? 'Moved back to draft and removed from the website.'
+                                : 'Published — it is now on the website.',
+                            )
+                          }
+                          label={
+                            item.status === 'PUBLISHED'
+                              ? `Unpublish ${item.title}`
+                              : `Publish ${item.title}`
+                          }
+                        />
+                        <StatusPill status={item.status} />
+                      </div>
+                    </TD>
+
+                    <TD className="whitespace-nowrap text-[12px] text-slate-500">
+                      {item.status === 'PUBLISHED'
+                        ? formatDate(item.publishedAt)
+                        : formatDate(item.updatedAt)}
+                    </TD>
+
+                    <TD className="whitespace-nowrap text-[12px] text-slate-500">
+                      <span className="flex items-center gap-2">
+                        {item.author?.name ?? '—'}
+                        {item.attachments.length > 0 && (
+                          <span
+                            className="inline-flex items-center gap-0.5 text-slate-400"
+                            title={`${item.attachments.length} attached document${item.attachments.length === 1 ? '' : 's'}`}
+                          >
+                            <Paperclip className="h-3 w-3" aria-hidden />
+                            {item.attachments.length}
+                          </span>
+                        )}
+                      </span>
+                    </TD>
+
+                    <TD align="right">
+                      <RowActions>
+                        <IconButton label="Edit announcement" onClick={() => setEditing(item)}>
+                          <Pencil className="h-3.5 w-3.5" aria-hidden />
+                        </IconButton>
+
+                        <DropdownMenu
+                          label={`More actions for ${item.title}`}
+                          trigger={() => (
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900">
+                              <span className="text-base leading-none" aria-hidden>
+                                ⋯
+                              </span>
+                            </span>
+                          )}
+                        >
+                          <MenuItem
+                            icon={
+                              item.status === 'PUBLISHED' ? (
+                                <Undo2 className="h-4 w-4" />
+                              ) : (
+                                <Send className="h-4 w-4" />
+                              )
+                            }
+                            onSelect={() =>
+                              void patch(
+                                item,
+                                { status: item.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED' },
+                                item.status === 'PUBLISHED'
+                                  ? 'Moved back to draft.'
+                                  : 'Published to the website.',
+                              )
+                            }
+                          >
+                            {item.status === 'PUBLISHED' ? 'Move back to draft' : 'Publish now'}
+                          </MenuItem>
+
+                          <MenuItem
+                            icon={
+                              item.pinned ? (
+                                <PinOff className="h-4 w-4" />
+                              ) : (
+                                <Pin className="h-4 w-4" />
+                              )
+                            }
+                            onSelect={() =>
+                              void patch(
+                                item,
+                                { pinned: !item.pinned },
+                                item.pinned ? 'Unpinned.' : 'Pinned to the top.',
+                              )
+                            }
+                          >
+                            {item.pinned ? 'Unpin' : 'Pin to the top'}
+                          </MenuItem>
+
+                          <MenuSeparator />
+
+                          <MenuItem
+                            tone="danger"
+                            icon={<Trash2 className="h-4 w-4" />}
+                            onSelect={() => setDeleting(item)}
+                          >
+                            Delete
+                          </MenuItem>
+                        </DropdownMenu>
+                      </RowActions>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          )}
+        </Panel>
       )}
 
       {editing && (
@@ -268,25 +414,25 @@ export function AnnouncementsPage() {
         />
       )}
 
-      <Modal
+      <ConfirmDialog
         open={Boolean(deleting)}
         onClose={() => setDeleting(null)}
+        onConfirm={async () => {
+          if (!deleting) return;
+          try {
+            await api.announcements.remove(deleting.id);
+            notify('Announcement deleted.', 'success');
+            await load();
+          } catch {
+            notify('Could not delete that announcement.', 'error');
+          }
+          setDeleting(null);
+        }}
         title="Delete this announcement?"
-      >
-        <p className="text-sm text-slate-600">
-          <strong className="text-[var(--navy)]">{deleting?.title}</strong> and any PDFs attached to
-          it will be permanently removed. This cannot be undone.
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setDeleting(null)}>
-            Keep it
-          </Button>
-          <Button variant="danger" onClick={() => void confirmDelete()}>
-            <Trash2 className="h-4 w-4" aria-hidden />
-            Delete
-          </Button>
-        </div>
-      </Modal>
+        itemName={deleting?.title}
+        consequence="and any PDFs attached to it will be permanently removed. This cannot be undone."
+        confirmLabel="Delete"
+      />
     </>
   );
 }
@@ -306,13 +452,17 @@ function EditorModal({
   const [form, setForm] = useState({
     title: announcement?.title ?? '',
     body: htmlToPlain(announcement?.body ?? ''),
+    excerpt: announcement?.excerpt ?? '',
     type: announcement?.type ?? ('NEWS' as AnnouncementType),
     pinned: announcement?.pinned ?? false,
   });
+
   const [attachments, setAttachments] = useState(announcement?.attachments ?? []);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const pendingFiles = useRef<File[]>([]);
 
   const save = async (status: AnnouncementStatus) => {
     setSaving(true);
@@ -322,6 +472,7 @@ function EditorModal({
       const payload = {
         title: form.title,
         body: plainToHtml(form.body),
+        excerpt: form.excerpt || null,
         type: form.type,
         pinned: form.pinned,
         status,
@@ -329,10 +480,9 @@ function EditorModal({
 
       if (announcement) {
         await api.announcements.update(announcement.id, payload);
-        notify(status === 'PUBLISHED' ? 'Published.' : 'Draft saved.', 'success');
       } else {
         const saved = await api.announcements.create(payload);
-        notify(status === 'PUBLISHED' ? 'Published.' : 'Draft saved.', 'success');
+
         // A new announcement has no id until now, so any PDFs the user picked
         // are attached immediately after it exists.
         if (pendingFiles.current.length > 0) {
@@ -341,6 +491,7 @@ function EditorModal({
         }
       }
 
+      notify(status === 'PUBLISHED' ? 'Published.' : 'Draft saved.', 'success');
       await onSaved();
     } catch (caught) {
       if (caught instanceof ApiError) {
@@ -352,8 +503,6 @@ function EditorModal({
       setSaving(false);
     }
   };
-
-  const pendingFiles = useRef<File[]>([]);
 
   const attachFiles = async (files: File[]) => {
     if (files.length === 0) return;
@@ -369,12 +518,11 @@ function EditorModal({
     }
 
     setUploading(true);
+
     try {
       const result = await api.announcements.attach(announcement.id, files);
       setAttachments((current) => [...current, ...result.created]);
-      result.failed.forEach((failure) =>
-        notify(`${failure.filename} — ${failure.reason}`, 'error'),
-      );
+      result.failed.forEach((failure) => notify(`${failure.filename} — ${failure.reason}`, 'error'));
       if (result.created.length > 0) notify('Document attached.', 'success');
     } catch (caught) {
       notify(
@@ -405,6 +553,21 @@ function EditorModal({
       onClose={onClose}
       wide
       title={announcement ? 'Edit announcement' : 'New announcement'}
+      description="Drafts are only visible here. Publishing puts it on the website immediately."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="secondary" onClick={() => void save('DRAFT')} loading={saving}>
+            Save as draft
+          </Button>
+          <Button onClick={() => void save('PUBLISHED')} loading={saving}>
+            <Send className="h-3.5 w-3.5" aria-hidden />
+            Publish
+          </Button>
+        </>
+      }
     >
       <div className="space-y-4">
         <Field label="Title" error={errors.title} required>
@@ -426,44 +589,58 @@ function EditorModal({
           <textarea
             value={form.body}
             onChange={(event) => setForm({ ...form, body: event.target.value })}
-            rows={10}
-            className={`${inputClass} resize-y font-normal leading-relaxed`}
-            placeholder={'Registration for Term 3 closes on 15 September.\n\nBring your national ID and last term’s report to the front office.'}
+            rows={9}
+            className={`${inputClass} resize-y leading-relaxed`}
+            placeholder={
+              'Registration for Term 3 closes on 15 September.\n\nBring your national ID and last term’s report to the front office.'
+            }
+          />
+        </Field>
+
+        <Field
+          label="Summary"
+          hint="Optional"
+          error={errors.excerpt}
+          help="Shown on the card before someone opens the full text."
+        >
+          <input
+            value={form.excerpt}
+            onChange={(event) => setForm({ ...form, excerpt: event.target.value })}
+            className={inputClass}
+            placeholder="Registration closes 15 September."
           />
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Type">
-            <select
+            <Select
               value={form.type}
               onChange={(event) =>
                 setForm({ ...form, type: event.target.value as AnnouncementType })
               }
-              className={inputClass}
             >
               {TYPES.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
 
           <div className="flex items-end pb-1">
-            <label className="flex cursor-pointer items-center gap-2.5 text-sm text-slate-700">
-              <input
-                type="checkbox"
+            <div className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2">
+              <span className="text-[13px] text-slate-700">Pin to the top</span>
+              <Switch
                 checked={form.pinned}
-                onChange={(event) => setForm({ ...form, pinned: event.target.checked })}
-                className="h-4 w-4 rounded border-slate-300 text-[var(--orange)] focus:ring-[var(--gold)]"
+                onChange={(value) => setForm({ ...form, pinned: value })}
+                label="Pin to the top of the list"
               />
-              Pin to the top of the list
-            </label>
+            </div>
           </div>
         </div>
 
         <div>
-          <span className="mb-1.5 block text-sm font-medium text-slate-700">
+          <span className="mb-1.5 block text-[13px] font-medium text-slate-700">
             Attached documents
           </span>
 
@@ -481,13 +658,13 @@ function EditorModal({
               {attachments.map((file) => (
                 <li
                   key={file.id}
-                  className="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                  className={`flex items-center gap-2.5 rounded-md border ${hairline} bg-slate-50/60 px-3 py-2`}
                 >
-                  <FileText className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-slate-700">
                     {file.filename}
                   </span>
-                  <span className="shrink-0 text-xs tabular-nums text-slate-500">
+                  <span className="shrink-0 text-[11px] tabular-nums text-slate-500">
                     {formatBytes(file.sizeBytes)}
                   </span>
                   <button
@@ -496,38 +673,26 @@ function EditorModal({
                     aria-label={`Remove ${file.filename}`}
                     className={`shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 ${focusRing}`}
                   >
-                    <X className="h-3.5 w-3.5" aria-hidden />
+                    <X className="h-3 w-3" aria-hidden />
                   </button>
                 </li>
               ))}
             </ul>
           )}
 
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={uploading}
-            onClick={() => fileInput.current?.click()}
-          >
-            <Upload className="h-3.5 w-3.5" aria-hidden />
-            Attach a PDF
-          </Button>
-          <span className="ml-2 text-xs text-slate-500">PDF only · up to 15 MB</span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={uploading}
+              onClick={() => fileInput.current?.click()}
+            >
+              <Upload className="h-3.5 w-3.5" aria-hidden />
+              Attach a PDF
+            </Button>
+            <span className="text-[11px] text-slate-500">PDF only · up to 15 MB</span>
+          </div>
         </div>
-      </div>
-
-      {/* Sticky, like the dialog header: on a short screen the publish button
-          would otherwise sit below the fold behind a scroll nobody expects. */}
-      <div className="sticky bottom-0 -mx-5 mt-7 flex flex-col-reverse gap-2 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:flex-row sm:justify-end">
-        <Button variant="ghost" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button variant="secondary" onClick={() => void save('DRAFT')} loading={saving}>
-          Save as draft
-        </Button>
-        <Button onClick={() => void save('PUBLISHED')} loading={saving}>
-          Publish to the website
-        </Button>
       </div>
     </Modal>
   );

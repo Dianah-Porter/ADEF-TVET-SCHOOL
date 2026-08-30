@@ -14,18 +14,30 @@ import { api, ApiError, type GalleryImage } from '../lib/api';
 import { PageHeader } from './AdminLayout';
 import { useToast } from './admin-context';
 import {
+  Badge,
   Button,
+  ConfirmDialog,
   EmptyState,
   ErrorState,
   Field,
+  IconButton,
   Modal,
+  Pagination,
+  Panel,
+  SearchInput,
+  SegmentedControl,
+  Select,
   Spinner,
+  Toolbar,
   focusRing,
   formatBytes,
+  hairline,
   inputClass,
 } from './ui';
 
 const CATEGORIES = ['Campus', 'Workshop', 'Students', 'Events', 'Facilities'];
+
+type Visibility = 'all' | 'live' | 'hidden';
 
 export function GalleryPage() {
   const { notify } = useToast();
@@ -35,84 +47,91 @@ export function GalleryPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+
   const [editing, setEditing] = useState<GalleryImage | null>(null);
   const [deleting, setDeleting] = useState<GalleryImage | null>(null);
-  const [category, setCategory] = useState(CATEGORIES[0]);
+
+  const [uploadCategory, setUploadCategory] = useState(CATEGORIES[0]!);
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [visibility, setVisibility] = useState<Visibility>('all');
+
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [meta, setMeta] = useState({ totalPages: 1, total: 0 });
 
   const fileInput = useRef<HTMLInputElement>(null);
   const dragIndex = useRef<number | null>(null);
 
-  const load = useCallback(async (targetPage: number) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    const params = new URLSearchParams({ page: String(page), limit: '48' });
+    if (search.trim()) params.set('search', search.trim());
+    if (category) params.set('category', category);
+    if (visibility !== 'all') params.set('published', String(visibility === 'live'));
+
     try {
-      const result = await api.gallery.listAdmin(`?page=${targetPage}&limit=48`);
+      const result = await api.gallery.listAdmin(`?${params.toString()}`);
       setImages(result.data);
-      setTotalPages(result.meta.totalPages);
-      setTotal(result.meta.total);
+      setMeta({ totalPages: result.meta.totalPages, total: result.meta.total });
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Could not reach the server.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [category, page, search, visibility]);
 
   useEffect(() => {
     document.title = 'Gallery · ADEF Admin';
-    void load(page);
-  }, [load, page]);
+  }, []);
+
+  // Debounced, so typing in the search box does not fire a request per keystroke.
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), search ? 300 : 0);
+    return () => window.clearTimeout(timer);
+  }, [load, search]);
+
+  const isFiltered = Boolean(search.trim() || category || visibility !== 'all');
 
   const upload = async (files: File[]) => {
     if (files.length === 0) return;
 
     setUploading(true);
+
     try {
-      const result = await api.gallery.upload(files, { category });
+      const result = await api.gallery.upload(files, { category: uploadCategory });
 
       if (result.created.length > 0) {
         notify(
-          result.created.length === 1
-            ? 'Photo added.'
-            : `${result.created.length} photos added.`,
+          result.created.length === 1 ? 'Photo added.' : `${result.created.length} photos added.`,
           'success',
         );
       }
 
       // Rejected files are named individually — telling someone "some files
       // failed" without saying which ones is useless.
-      result.failed.forEach((failure) =>
-        notify(`${failure.filename} — ${failure.reason}`, 'error'),
-      );
+      result.failed.forEach((failure) => notify(`${failure.filename} — ${failure.reason}`, 'error'));
 
       setPage(1);
-      await load(1);
+      await load();
     } catch (caught) {
-      const message =
+      notify(
         caught instanceof ApiError
           ? (caught.fields?.files ?? caught.message)
-          : 'The upload failed.';
-      notify(message, 'error');
+          : 'The upload failed.',
+        'error',
+      );
     } finally {
       setUploading(false);
       if (fileInput.current) fileInput.current.value = '';
     }
   };
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setDragActive(false);
-    void upload(Array.from(event.dataTransfer.files));
-  };
-
   const togglePublished = async (image: GalleryImage) => {
-    // Optimistic: the switch should feel instant. Reverted below if it fails.
+    // Optimistic: the toggle should feel instant. Reverted below if it fails.
     setImages((current) =>
-      current.map((item) =>
-        item.id === image.id ? { ...item, published: !item.published } : item,
-      ),
+      current.map((item) => (item.id === image.id ? { ...item, published: !item.published } : item)),
     );
 
     try {
@@ -120,26 +139,14 @@ export function GalleryPage() {
       notify(image.published ? 'Photo hidden from the website.' : 'Photo is now live.', 'success');
     } catch {
       setImages((current) =>
-        current.map((item) => (item.id === image.id ? { ...item, published: image.published } : item)),
+        current.map((item) =>
+          item.id === image.id ? { ...item, published: image.published } : item,
+        ),
       );
       notify('Could not change that photo. Try again.', 'error');
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleting) return;
-
-    try {
-      await api.gallery.remove(deleting.id);
-      notify('Photo deleted.', 'success');
-      setDeleting(null);
-      await load(page);
-    } catch {
-      notify('Could not delete that photo.', 'error');
-    }
-  };
-
-  /** Persists the current on-screen order. */
   const persistOrder = async (ordered: GalleryImage[]) => {
     const previous = images;
     setImages(ordered);
@@ -166,36 +173,57 @@ export function GalleryPage() {
     <>
       <PageHeader
         title="Gallery"
-        description={
-          total > 0
-            ? `${total} photo${total === 1 ? '' : 's'}. Drag to reorder — the website shows them in this order.`
-            : 'Photos shown on the website gallery.'
-        }
+        description="Photos in the campus gallery. Drag a card, or use the arrows, to change their order."
         action={
           <Button onClick={() => fileInput.current?.click()} loading={uploading}>
-            <Upload className="h-4 w-4" aria-hidden />
+            <Upload className="h-3.5 w-3.5" aria-hidden />
             Add photos
           </Button>
         }
       />
 
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="sm:w-56">
-          <Field label="Category for new uploads">
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              className={inputClass}
-            >
-              {CATEGORIES.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-      </div>
+      <Toolbar>
+        <SearchInput
+          value={search}
+          onChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+          placeholder="Search photo titles…"
+          className="w-full sm:max-w-xs"
+        />
+
+        <Select
+          value={category}
+          onChange={(event) => {
+            setCategory(event.target.value);
+            setPage(1);
+          }}
+          aria-label="Filter by category"
+          className="w-auto min-w-[10rem]"
+        >
+          <option value="">All categories</option>
+          {CATEGORIES.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </Select>
+
+        <SegmentedControl<Visibility>
+          label="Filter by visibility"
+          value={visibility}
+          onChange={(value) => {
+            setVisibility(value);
+            setPage(1);
+          }}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'live', label: 'Live' },
+            { value: 'hidden', label: 'Hidden' },
+          ]}
+        />
+      </Toolbar>
 
       <input
         ref={fileInput}
@@ -206,75 +234,126 @@ export function GalleryPage() {
         onChange={(event) => void upload(Array.from(event.target.files ?? []))}
       />
 
+      {/* Upload target. Category is chosen here rather than in the toolbar so
+          it is unmistakably about what is being added, not what is shown. */}
       <div
         onDragOver={(event) => {
           event.preventDefault();
           setDragActive(true);
         }}
         onDragLeave={() => setDragActive(false)}
-        onDrop={handleDrop}
-        className={`mb-6 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragActive(false);
+          void upload(Array.from(event.dataTransfer.files));
+        }}
+        className={`mb-4 flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-6 text-center transition-colors sm:flex-row sm:justify-center sm:gap-4 ${
           dragActive
             ? 'border-[var(--orange)] bg-orange-50'
-            : 'border-slate-300 bg-white hover:border-slate-400'
+            : `${hairline} bg-white hover:border-slate-400`
         }`}
       >
-        <Upload className="mx-auto mb-2 h-6 w-6 text-slate-400" aria-hidden />
-        <p className="text-sm font-medium text-slate-700">
+        <Upload className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+
+        <div className="text-[13px] text-slate-600">
           Drop photos here, or{' '}
           <button
             type="button"
             onClick={() => fileInput.current?.click()}
-            className={`rounded text-[var(--orange)] underline underline-offset-2 hover:text-[#d4551f] ${focusRing}`}
+            className={`rounded font-medium text-[var(--orange)] underline underline-offset-2 hover:text-[#d96a1c] ${focusRing}`}
           >
             browse your files
           </button>
-        </p>
-        <p className="mt-1 text-xs text-slate-500">
-          JPEG, PNG or WebP · up to 8 MB each · 10 at a time
-        </p>
+          <span className="mt-0.5 block text-[11px] text-slate-400">
+            JPEG, PNG or WebP · up to 8 MB each · 10 at a time
+          </span>
+        </div>
+
+        <label className="flex items-center gap-2 text-[12px] text-slate-500">
+          <span className="whitespace-nowrap">Add to</span>
+          <Select
+            value={uploadCategory}
+            onChange={(event) => setUploadCategory(event.target.value)}
+            aria-label="Category for new uploads"
+            className="w-auto"
+          >
+            {CATEGORIES.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </Select>
+        </label>
       </div>
 
-      {loading && <Spinner label="Loading photos" />}
-      {error && !loading && <ErrorState message={error} onRetry={() => void load(page)} />}
+      {error && !loading ? (
+        <ErrorState message={error} onRetry={load} />
+      ) : loading ? (
+        <Spinner label="Loading photos" />
+      ) : images.length === 0 ? (
+        <Panel>
+          <EmptyState
+            icon={<Images className="h-7 w-7" />}
+            title={isFiltered ? 'Nothing matches' : 'No photos yet'}
+            description={
+              isFiltered
+                ? 'No photos match the current search or filters.'
+                : 'Add photos of the campus, workshops and students. They appear on the website gallery straight away.'
+            }
+            action={
+              isFiltered ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSearch('');
+                    setCategory('');
+                    setVisibility('all');
+                  }}
+                >
+                  Clear filters
+                </Button>
+              ) : (
+                <Button onClick={() => fileInput.current?.click()}>
+                  <Upload className="h-3.5 w-3.5" aria-hidden />
+                  Add the first photo
+                </Button>
+              )
+            }
+          />
+        </Panel>
+      ) : (
+        <Panel>
+          <div className={`flex items-center justify-between border-b ${hairline} bg-slate-50/60 px-3 py-2`}>
+            <p className="text-[12px] text-slate-500">
+              {meta.total} photo{meta.total === 1 ? '' : 's'}
+              {isFiltered ? ' matching' : ''}
+            </p>
+            {isFiltered && (
+              <p className="text-[11px] text-slate-400">Reordering is disabled while filtering</p>
+            )}
+          </div>
 
-      {!loading && !error && images.length === 0 && (
-        <EmptyState
-          icon={<Images className="h-8 w-8" />}
-          title="No photos yet"
-          description="Add photos of the campus, workshops and students. They appear on the website gallery straight away."
-          action={
-            <Button onClick={() => fileInput.current?.click()}>
-              <Upload className="h-4 w-4" aria-hidden />
-              Add the first photo
-            </Button>
-          }
-        />
-      )}
-
-      {!loading && !error && images.length > 0 && (
-        <>
-          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <ul className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4">
             {images.map((image, index) => (
               <li
                 key={image.id}
-                draggable
+                draggable={!isFiltered}
                 onDragStart={() => {
                   dragIndex.current = index;
                 }}
                 onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
+                onDrop={(event: DragEvent<HTMLLIElement>) => {
                   event.preventDefault();
                   const from = dragIndex.current;
                   dragIndex.current = null;
-                  if (from === null || from === index) return;
+                  if (isFiltered || from === null || from === index) return;
 
                   const next = [...images];
                   const [moved] = next.splice(from, 1);
                   next.splice(index, 0, moved!);
                   void persistOrder(next);
                 }}
-                className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
+                className={`group relative overflow-hidden rounded-lg border ${hairline} bg-white transition-shadow hover:shadow-sm`}
               >
                 <div className="relative aspect-[4/3] bg-slate-100">
                   <img
@@ -287,61 +366,63 @@ export function GalleryPage() {
                   />
 
                   {!image.published && (
-                    <span className="absolute left-2 top-2 rounded-md bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                      Hidden
+                    <span className="absolute left-1.5 top-1.5">
+                      <Badge tone="neutral">Hidden</Badge>
                     </span>
                   )}
 
-                  <span
-                    className="absolute right-2 top-2 cursor-grab rounded-md bg-white/90 p-1 text-slate-500 opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
-                    aria-hidden
-                  >
-                    <GripVertical className="h-3.5 w-3.5" />
-                  </span>
+                  {!isFiltered && (
+                    <span
+                      className="absolute right-1.5 top-1.5 cursor-grab rounded bg-white/90 p-1 text-slate-500 opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
+                      aria-hidden
+                    >
+                      <GripVertical className="h-3 w-3" />
+                    </span>
+                  )}
                 </div>
 
-                <div className="p-3">
-                  <p className="truncate text-sm font-medium text-[var(--navy)]" title={image.title}>
+                <div className="p-2.5">
+                  <p className="truncate text-[13px] font-medium text-slate-900" title={image.title}>
                     {image.title}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 truncate text-[11px] tabular-nums text-slate-500">
                     {image.category} · {image.width}×{image.height} · {formatBytes(image.sizeBytes)}
                   </p>
 
-                  <div className="mt-2.5 flex items-center gap-1">
+                  <div className="mt-2 flex items-center gap-0.5">
                     <IconButton label="Edit details" onClick={() => setEditing(image)}>
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5" aria-hidden />
                     </IconButton>
                     <IconButton
                       label={image.published ? 'Hide from website' : 'Show on website'}
                       onClick={() => void togglePublished(image)}
                     >
                       {image.published ? (
-                        <Eye className="h-3.5 w-3.5" />
+                        <Eye className="h-3.5 w-3.5" aria-hidden />
                       ) : (
-                        <EyeOff className="h-3.5 w-3.5" />
+                        <EyeOff className="h-3.5 w-3.5" aria-hidden />
                       )}
                     </IconButton>
-                    <IconButton label="Delete photo" danger onClick={() => setDeleting(image)}>
-                      <Trash2 className="h-3.5 w-3.5" />
+                    <IconButton label="Delete photo" tone="danger" onClick={() => setDeleting(image)}>
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
                     </IconButton>
 
                     {/* Dragging is unusable with a keyboard, so ordering also
                         has explicit buttons. */}
-                    <span className="ml-auto flex gap-0.5">
+                    <span className="ml-auto flex">
                       <IconButton
                         label={`Move ${image.title} earlier`}
-                        disabled={index === 0}
+                        disabled={isFiltered || index === 0}
                         onClick={() => moveBy(index, -1)}
                       >
-                        <ChevronLeft className="h-3.5 w-3.5" />
+                        <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
                       </IconButton>
                       <IconButton
                         label={`Move ${image.title} later`}
-                        disabled={index === images.length - 1}
+                        disabled={isFiltered || index === images.length - 1}
                         onClick={() => moveBy(index, 1)}
                       >
-                        <ChevronRight className="h-3.5 w-3.5" />
+                        <ChevronRight className="h-3.5 w-3.5" aria-hidden />
                       </IconButton>
                     </span>
                   </div>
@@ -350,30 +431,13 @@ export function GalleryPage() {
             ))}
           </ul>
 
-          {totalPages > 1 && (
-            <nav className="mt-6 flex items-center justify-center gap-3" aria-label="Pagination">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page === 1}
-                onClick={() => setPage((value) => value - 1)}
-              >
-                Previous
-              </Button>
-              <span className="text-sm tabular-nums text-slate-600">
-                Page {page} of {totalPages}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page === totalPages}
-                onClick={() => setPage((value) => value + 1)}
-              >
-                Next
-              </Button>
-            </nav>
-          )}
-        </>
+          <Pagination
+            page={page}
+            totalPages={meta.totalPages}
+            total={meta.total}
+            onChange={setPage}
+          />
+        </Panel>
       )}
 
       <EditImageModal
@@ -388,45 +452,26 @@ export function GalleryPage() {
         }}
       />
 
-      <Modal open={Boolean(deleting)} onClose={() => setDeleting(null)} title="Delete this photo?">
-        <p className="text-sm text-slate-600">
-          <strong className="text-[var(--navy)]">{deleting?.title}</strong> will be removed from the
-          website and the file deleted. This cannot be undone.
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setDeleting(null)}>
-            Keep it
-          </Button>
-          <Button variant="danger" onClick={() => void confirmDelete()}>
-            <Trash2 className="h-4 w-4" aria-hidden />
-            Delete photo
-          </Button>
-        </div>
-      </Modal>
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => setDeleting(null)}
+        onConfirm={async () => {
+          if (!deleting) return;
+          try {
+            await api.gallery.remove(deleting.id);
+            notify('Photo deleted.', 'success');
+            await load();
+          } catch {
+            notify('Could not delete that photo.', 'error');
+          }
+          setDeleting(null);
+        }}
+        title="Delete this photo?"
+        itemName={deleting?.title}
+        consequence="will be removed from the website and the file deleted. This cannot be undone."
+        confirmLabel="Delete photo"
+      />
     </>
-  );
-}
-
-function IconButton({
-  children,
-  label,
-  danger = false,
-  ...props
-}: { label: string; danger?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      {...props}
-      type="button"
-      title={label}
-      aria-label={label}
-      className={`rounded-md p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${focusRing} ${
-        danger
-          ? 'text-slate-500 hover:bg-red-50 hover:text-red-600'
-          : 'text-slate-500 hover:bg-slate-100 hover:text-[var(--navy)]'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -477,8 +522,23 @@ function EditImageModal({
   };
 
   return (
-    <Modal open onClose={onClose} title="Photo details">
-      <div className="mb-5 overflow-hidden rounded-lg bg-slate-100">
+    <Modal
+      open
+      onClose={onClose}
+      title="Photo details"
+      wide
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={() => void save()} loading={saving}>
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <div className={`mb-4 overflow-hidden rounded-lg border ${hairline} bg-slate-50`}>
         <img
           src={image.thumbnailUrl ?? image.url}
           alt={image.altText}
@@ -497,8 +557,8 @@ function EditImageModal({
 
         <Field
           label="Alt text"
-          hint="Required"
           error={errors.altText}
+          help="Describes the photo for visitors using a screen reader."
           required
         >
           <input
@@ -507,9 +567,6 @@ function EditImageModal({
             className={inputClass}
             placeholder="Students welding a steel frame in the workshop"
           />
-          <span className="mt-1 block text-xs text-slate-500">
-            Describes the photo for visitors using a screen reader.
-          </span>
         </Field>
 
         <Field label="Caption" hint="Optional" error={errors.caption}>
@@ -521,27 +578,17 @@ function EditImageModal({
         </Field>
 
         <Field label="Category" error={errors.category}>
-          <select
+          <Select
             value={form.category}
             onChange={(event) => setForm({ ...form, category: event.target.value })}
-            className={inputClass}
           >
             {[...new Set([...CATEGORIES, form.category])].map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
-      </div>
-
-      <div className="mt-6 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button onClick={() => void save()} loading={saving}>
-          Save changes
-        </Button>
       </div>
     </Modal>
   );

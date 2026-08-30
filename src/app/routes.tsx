@@ -3,9 +3,18 @@ import App from './App';
 import { AuthProvider, ToastProvider, useAuth } from './admin/admin-context';
 import { AdminLayout } from './admin/AdminLayout';
 import { LoginPage } from './admin/LoginPage';
+import { ForgotPasswordPage } from './admin/ForgotPasswordPage';
+import { ResetPasswordPage } from './admin/ResetPasswordPage';
 import { OverviewPage } from './admin/OverviewPage';
 import { GalleryPage } from './admin/GalleryPage';
 import { AnnouncementsPage } from './admin/AnnouncementsPage';
+import { CoursesPage } from './admin/CoursesPage';
+import { TestimonialsPage } from './admin/TestimonialsPage';
+import { HeroPage } from './admin/HeroPage';
+import { FeaturesPage } from './admin/FeaturesPage';
+import { SettingsPage } from './admin/SettingsPage';
+import { InboxPage } from './admin/InboxPage';
+import { ProfilePage } from './admin/ProfilePage';
 import { Spinner, Toaster } from './admin/ui';
 
 /**
@@ -21,7 +30,11 @@ export function AppRoutes() {
           <Routes>
             <Route path="/" element={<App />} />
 
+            {/* Signed-out routes. Reset links arrive by email, so these have to
+                be reachable without a session. */}
             <Route path="/admin/login" element={<LoginPage />} />
+            <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
 
             <Route
               path="/admin"
@@ -32,8 +45,15 @@ export function AppRoutes() {
               }
             >
               <Route index element={<OverviewPage />} />
+              <Route path="hero" element={<HeroPage />} />
+              <Route path="courses" element={<CoursesPage />} />
               <Route path="gallery" element={<GalleryPage />} />
               <Route path="announcements" element={<AnnouncementsPage />} />
+              <Route path="testimonials" element={<TestimonialsPage />} />
+              <Route path="features" element={<FeaturesPage />} />
+              <Route path="inbox" element={<InboxPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="profile" element={<ProfilePage />} />
             </Route>
 
             {/* Anything unrecognised belongs to the public site. */}

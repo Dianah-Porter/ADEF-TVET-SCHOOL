@@ -1,33 +1,61 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { FileText, HardDrive, Images, Megaphone, PencilLine } from 'lucide-react';
-import { api, ApiError, type DashboardStats } from '../lib/api';
+import {
+  FileText,
+  HardDrive,
+  Images,
+  Inbox,
+  Megaphone,
+  PencilLine,
+  Plus,
+  Settings,
+} from 'lucide-react';
+import { api, ApiError, type DashboardStats, type InboxCounts } from '../lib/api';
 import { PageHeader } from './AdminLayout';
 import { useAuth } from './admin-context';
-import { Button, ErrorState, Spinner, formatBytes } from './ui';
+import {
+  Badge,
+  Button,
+  ErrorState,
+  Panel,
+  PanelHeader,
+  Spinner,
+  StatCard,
+  formatBytes,
+  relativeTime,
+} from './ui';
 
 export function OverviewPage() {
   const { user } = useAuth();
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [inbox, setInbox] = useState<InboxCounts | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
-      setStats(await api.stats());
+      // Fetched together: the dashboard is not useful with half its numbers,
+      // and two sequential round trips would double the time to first paint.
+      const [dashboard, messages] = await Promise.all([
+        api.stats(),
+        api.contact.list('?limit=1').catch(() => null),
+      ]);
+
+      setStats(dashboard);
+      setInbox(messages?.meta.counts ?? null);
     } catch (caught) {
-      setError(
-        caught instanceof ApiError ? caught.message : 'Could not reach the server.',
-      );
+      setError(caught instanceof ApiError ? caught.message : 'Could not reach the server.');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    document.title = 'Overview · ADEF Admin';
+    document.title = 'Dashboard · ADEF Admin';
     void load();
   }, [load]);
 
@@ -42,59 +70,99 @@ export function OverviewPage() {
       {error && !loading && <ErrorState message={error} onRetry={load} />}
 
       {stats && !loading && !error && (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
-              icon={<Images className="h-4 w-4" />}
               label="Gallery photos"
               value={stats.galleryImages}
-              to="/admin/gallery"
+              icon={<Images className="h-4 w-4" />}
+              hint="Shown in the campus gallery"
+              href={
+                <Link to="/admin/gallery" className="text-[12px] font-medium text-[var(--orange)] hover:underline">
+                  Manage gallery →
+                </Link>
+              }
             />
+
             <StatCard
-              icon={<Megaphone className="h-4 w-4" />}
               label="Published"
               value={stats.publishedAnnouncements}
-              to="/admin/announcements?status=PUBLISHED"
+              icon={<Megaphone className="h-4 w-4" />}
+              hint="Announcements live on the site"
+              href={
+                <Link
+                  to="/admin/announcements?status=PUBLISHED"
+                  className="text-[12px] font-medium text-[var(--orange)] hover:underline"
+                >
+                  View published →
+                </Link>
+              }
             />
+
+            {/* Drafts are the one number that usually needs acting on, so it is
+                the only card that draws attention to itself. */}
             <StatCard
-              icon={<PencilLine className="h-4 w-4" />}
               label="Drafts"
               value={stats.draftAnnouncements}
-              // Drafts are the one number that usually needs acting on, so it
-              // is the only card that draws attention to itself.
-              highlight={stats.draftAnnouncements > 0}
-              to="/admin/announcements?status=DRAFT"
+              icon={<PencilLine className="h-4 w-4" />}
+              tone={stats.draftAnnouncements > 0 ? 'attention' : 'neutral'}
+              hint={
+                stats.draftAnnouncements > 0
+                  ? `${stats.draftAnnouncements === 1 ? 'One is' : 'These are'} not visible on the website`
+                  : 'Nothing waiting to be published'
+              }
+              href={
+                <Link
+                  to="/admin/announcements?status=DRAFT"
+                  className="text-[12px] font-medium text-[var(--orange)] hover:underline"
+                >
+                  Review drafts →
+                </Link>
+              }
             />
+
             <StatCard
-              icon={<HardDrive className="h-4 w-4" />}
-              label="Storage used"
-              value={formatBytes(stats.storageBytes)}
+              label="New enquiries"
+              value={inbox?.NEW ?? 0}
+              icon={<Inbox className="h-4 w-4" />}
+              tone={(inbox?.NEW ?? 0) > 0 ? 'attention' : 'neutral'}
+              hint={
+                (inbox?.NEW ?? 0) > 0
+                  ? 'Unread messages from the contact form'
+                  : 'Everything has been read'
+              }
+              href={
+                <Link to="/admin/inbox" className="text-[12px] font-medium text-[var(--orange)] hover:underline">
+                  Open inbox →
+                </Link>
+              }
             />
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-3">
-            <section className="lg:col-span-2">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Recent activity
-              </h2>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Panel className="lg:col-span-2">
+              <PanelHeader
+                title="Recent activity"
+                description="Who changed what, most recent first."
+              />
 
               {stats.recentActivity.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
+                <p className="px-4 py-10 text-center text-[13px] text-slate-500">
                   Nothing has been changed yet.
                 </p>
               ) : (
-                <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <ul className="divide-y divide-slate-100">
                   {stats.recentActivity.map((entry) => (
-                    <li key={entry.id} className="flex items-center gap-3 px-4 py-3">
+                    <li key={entry.id} className="flex items-center gap-3 px-4 py-2.5">
                       <ActionDot action={entry.action} />
-                      <span className="min-w-0 flex-1 text-sm text-slate-700">
-                        <span className="font-medium text-[var(--navy)]">{entry.actor}</span>{' '}
+                      <span className="min-w-0 flex-1 text-[13px] text-slate-700">
+                        <span className="font-medium text-slate-900">{entry.actor}</span>{' '}
                         {verbFor(entry.action)}{' '}
                         <span className="text-slate-500">{labelFor(entry.entity)}</span>
                       </span>
                       <time
                         dateTime={entry.at}
-                        className="shrink-0 text-xs tabular-nums text-slate-400"
+                        className="shrink-0 text-[11px] tabular-nums text-slate-400"
                       >
                         {relativeTime(entry.at)}
                       </time>
@@ -102,77 +170,69 @@ export function OverviewPage() {
                   ))}
                 </ul>
               )}
-            </section>
+            </Panel>
 
-            <section>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Quick actions
-              </h2>
-              <div className="space-y-2.5">
-                <Link to="/admin/gallery" className="block">
-                  <Button variant="secondary" className="w-full justify-start">
-                    <Images className="h-4 w-4" aria-hidden />
-                    Add photos to the gallery
-                  </Button>
-                </Link>
-                <Link to="/admin/announcements?new=1" className="block">
-                  <Button variant="secondary" className="w-full justify-start">
-                    <FileText className="h-4 w-4" aria-hidden />
-                    Write an announcement
-                  </Button>
-                </Link>
-              </div>
+            <div className="space-y-4">
+              <Panel>
+                <PanelHeader title="Quick actions" />
+                <div className="space-y-2 p-3">
+                  <Link to="/admin/announcements?new=1" className="block">
+                    <Button variant="secondary" className="w-full justify-start">
+                      <FileText className="h-3.5 w-3.5" aria-hidden />
+                      Write an announcement
+                    </Button>
+                  </Link>
+                  <Link to="/admin/gallery" className="block">
+                    <Button variant="secondary" className="w-full justify-start">
+                      <Images className="h-3.5 w-3.5" aria-hidden />
+                      Add photos to the gallery
+                    </Button>
+                  </Link>
+                  <Link to="/admin/courses" className="block">
+                    <Button variant="secondary" className="w-full justify-start">
+                      <Plus className="h-3.5 w-3.5" aria-hidden />
+                      Add a course
+                    </Button>
+                  </Link>
+                  <Link to="/admin/settings" className="block">
+                    <Button variant="secondary" className="w-full justify-start">
+                      <Settings className="h-3.5 w-3.5" aria-hidden />
+                      Edit site details
+                    </Button>
+                  </Link>
+                </div>
+              </Panel>
+
+              <Panel padded>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <HardDrive className="h-4 w-4" aria-hidden />
+                    <span className="text-[12px] font-medium">Storage used</span>
+                  </div>
+                  <span className="text-[13px] font-semibold tabular-nums text-slate-900">
+                    {formatBytes(stats.storageBytes)}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  Photos and documents uploaded through the dashboard.
+                </p>
+              </Panel>
 
               {stats.draftAnnouncements > 0 && (
-                <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
-                  {stats.draftAnnouncements === 1
-                    ? '1 announcement is still a draft and is not visible on the website.'
-                    : `${stats.draftAnnouncements} announcements are still drafts and are not visible on the website.`}
-                </p>
+                <Panel padded className="border-amber-300 bg-amber-50/50">
+                  <Badge tone="warning">Needs attention</Badge>
+                  <p className="mt-2 text-[12px] leading-relaxed text-amber-900">
+                    {stats.draftAnnouncements === 1
+                      ? '1 announcement is still a draft and is not visible on the website.'
+                      : `${stats.draftAnnouncements} announcements are still drafts and are not visible on the website.`}
+                  </p>
+                </Panel>
               )}
-            </section>
+            </div>
           </div>
-        </>
+        </div>
       )}
     </>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  to,
-  highlight = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number | string;
-  to?: string;
-  highlight?: boolean;
-}) {
-  const content = (
-    <div
-      className={`h-full rounded-xl border bg-white p-4 transition-shadow ${
-        highlight ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-200'
-      } ${to ? 'hover:shadow-md' : ''}`}
-    >
-      <div className="flex items-center gap-2 text-slate-500">
-        <span className={highlight ? 'text-amber-600' : 'text-[var(--gold)]'} aria-hidden>
-          {icon}
-        </span>
-        <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
-      </div>
-      <p className="mt-2 text-2xl font-bold tabular-nums text-[var(--navy)]">{value}</p>
-    </div>
-  );
-
-  return to ? (
-    <Link to={to} className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]">
-      {content}
-    </Link>
-  ) : (
-    content
   );
 }
 
@@ -184,7 +244,9 @@ function ActionDot({ action }: { action: string }) {
         ? 'bg-red-500'
         : action === 'LOGIN_FAILED'
           ? 'bg-amber-500'
-          : 'bg-slate-400';
+          : action.startsWith('PASSWORD_RESET')
+            ? 'bg-blue-500'
+            : 'bg-slate-300';
 
   return <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${colour}`} aria-hidden />;
 }
@@ -201,6 +263,10 @@ function verbFor(action: string): string {
       return 'signed in';
     case 'LOGIN_FAILED':
       return 'failed to sign in';
+    case 'PASSWORD_RESET_REQUESTED':
+      return 'requested a password reset for';
+    case 'PASSWORD_RESET':
+      return 'changed the password for';
     default:
       return 'changed';
   }
@@ -212,20 +278,23 @@ function labelFor(entity: string): string {
       return 'a gallery photo';
     case 'Announcement':
       return 'an announcement';
+    case 'Course':
+      return 'a course';
+    case 'Testimonial':
+      return 'a testimonial';
+    case 'HeroSlide':
+      return 'a hero slide';
+    case 'Feature':
+      return 'a why-choose-us point';
+    case 'WorkingHours':
+      return 'the opening hours';
+    case 'SiteSettings':
+      return 'the site settings';
+    case 'ContactMessage':
+      return 'an enquiry';
     case 'AdminUser':
-      return '';
+      return 'a staff account';
     default:
       return entity;
   }
-}
-
-function relativeTime(iso: string): string {
-  const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
-
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
