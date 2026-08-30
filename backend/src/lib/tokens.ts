@@ -64,3 +64,23 @@ export const refreshCookieOptions = {
   path: '/api/v1/auth',
   maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
 };
+
+/**
+ * Password reset tokens are opaque random strings, like refresh tokens, and
+ * only their SHA-256 hash is stored. The plaintext exists solely in the email
+ * that was sent, so a database leak yields no usable reset links.
+ *
+ * They are generated and hashed separately from refresh tokens so the two can
+ * never be confused for one another at a call site.
+ */
+export function generateResetToken(): string {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+export function hashResetToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+export function resetTokenExpiry(): Date {
+  return new Date(Date.now() + env.PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+}

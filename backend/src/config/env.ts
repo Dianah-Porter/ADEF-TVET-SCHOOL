@@ -29,6 +29,24 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().default('uploads'),
   PUBLIC_BASE_URL: z.string().url().default('http://localhost:4000'),
 
+  /** Where the dashboard is served. Reset links are built against this. */
+  APP_URL: z.string().url().default('http://localhost:5173'),
+
+  // ─── Outgoing email ───────────────────────────────────────────────────────
+  // All optional. With no SMTP_HOST the mailer logs to the console instead of
+  // sending, so password reset works in development with nothing configured.
+  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  SMTP_USER: z.string().min(1).optional(),
+  SMTP_PASS: z.string().min(1).optional(),
+  MAIL_FROM: z.string().default('ADEF TVET School <no-reply@adef.rw>'),
+
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(60),
+
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   SEED_ADMIN_PASSWORD: z.string().optional(),
   SEED_ADMIN_NAME: z.string().optional(),
@@ -60,6 +78,9 @@ export const env = {
   corsOrigins: raw.CORS_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
+
+  /** True once SMTP is configured; otherwise the mailer only logs. */
+  mailEnabled: Boolean(raw.SMTP_HOST),
 
   /** Absolute path to the upload root, resolved from the backend package root. */
   uploadRoot: path.resolve(__dirname, '../..', raw.UPLOAD_DIR),
