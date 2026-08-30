@@ -21,6 +21,17 @@ export const uploadImages = multer({
   limits: { fileSize: MAX_IMAGE_BYTES, files: MAX_IMAGES_PER_REQUEST },
 }).array('images', MAX_IMAGES_PER_REQUEST);
 
+/**
+ * One image, for the records that carry a single picture: a course card, a
+ * testimonial avatar, a hero slide. Separate from uploadImages so the field
+ * name says what it is and the count limit is enforced by multer rather than
+ * by every controller remembering to check.
+ */
+export const uploadSingleImage = multer({
+  storage: memory,
+  limits: { fileSize: MAX_IMAGE_BYTES, files: 1 },
+}).single('image');
+
 export const uploadPdfs = multer({
   storage: memory,
   limits: { fileSize: MAX_PDF_BYTES, files: MAX_PDFS_PER_REQUEST },
@@ -46,7 +57,7 @@ export const uploadErrorHandler: ErrorRequestHandler = (err, _req, _res, next) =
     case 'LIMIT_UNEXPECTED_FILE':
       return next(
         ApiError.badRequest(
-          `Unexpected form field "${err.field}". Images go in "images", documents in "documents".`,
+          `Unexpected form field "${err.field}". Images go in "images" or "image", documents in "documents".`,
         ),
       );
     default:

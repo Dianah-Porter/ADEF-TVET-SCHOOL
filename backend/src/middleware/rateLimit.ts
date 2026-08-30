@@ -32,3 +32,44 @@ export const apiRateLimit = rateLimit({
     error: { code: 'TOO_MANY_REQUESTS', message: 'Too many requests. Slow down a little.' },
   },
 });
+
+/**
+ * The contact form is the one unauthenticated write on the whole API, which
+ * makes it the obvious target for spam. Counting successes too (unlike login)
+ * is the point here: a flood of *valid* submissions is exactly what needs
+ * stopping.
+ */
+export const contactRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: () => env.isDevelopment,
+  message: {
+    error: {
+      code: 'TOO_MANY_REQUESTS',
+      message: 'You have sent several messages already. Please give us time to reply.',
+    },
+  },
+});
+
+/**
+ * Password reset requests, limited by IP.
+ *
+ * Kept tight because each accepted request sends an email: without a cap this
+ * endpoint would let anyone use the school's mail server to flood a staff
+ * member's inbox.
+ */
+export const passwordResetRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: () => env.isDevelopment,
+  message: {
+    error: {
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Too many reset requests. Try again in an hour.',
+    },
+  },
+});
