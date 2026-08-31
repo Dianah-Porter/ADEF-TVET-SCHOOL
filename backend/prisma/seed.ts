@@ -66,7 +66,7 @@ const GALLERY_FILES = [
  */
 const FRONTEND_IMPORTS = path.resolve(__dirname, '../../frontend/src/imports');
 
-async function seedAdmin() {
+export async function seedAdmin() {
   const email = env.SEED_ADMIN_EMAIL;
   const password = env.SEED_ADMIN_PASSWORD;
   const name = env.SEED_ADMIN_NAME ?? 'ADEF Administrator';
@@ -214,14 +214,19 @@ async function main() {
   console.log('\nDone.\n');
 }
 
-main()
-  .catch((error) => {
-    console.error('\nSeed failed:', error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// Guarded: seed-admin.ts imports seedAdmin from this file, and without this
+// check that import would run the entire seed as a side effect — including the
+// image uploads it exists to avoid.
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error('\nSeed failed:', error);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
 
 // ─── Website content ────────────────────────────────────────────────────────
 
