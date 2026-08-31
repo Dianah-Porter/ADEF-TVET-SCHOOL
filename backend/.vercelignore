@@ -1,0 +1,8 @@
+# Locally uploaded media never belongs in a deployment: the serverless
+# filesystem is read-only and ephemeral, so these files could not be served
+# anyway, and they would bloat every build.
+uploads/
+
+dist/
+node_modules/
+*.log

@@ -16,7 +16,8 @@
     "db:studio": "node node_modules/prisma/build/index.js studio",
     "db:seed": "node node_modules/tsx/dist/cli.mjs prisma/seed.ts",
     "db:reset": "node node_modules/prisma/build/index.js migrate reset",
-    "test:smoke": "node node_modules/tsx/dist/cli.mjs scripts/smoke-test.ts"
+    "test:smoke": "node node_modules/tsx/dist/cli.mjs scripts/smoke-test.ts",
+    "vercel-build": "node node_modules/prisma/build/index.js generate"
   },
   "engines": {
     "node": ">=20"
@@ -25,6 +26,7 @@
     "@node-rs/argon2": "^2.1.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@vercel/blob": "^2.8.0",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
