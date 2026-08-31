@@ -15,6 +15,7 @@ interface ApiState<T> {
  * - When the API is configured it fetches on mount and returns live data.
  *   If the request fails the `fallback` is used silently so the site stays
  *   functional without a backend.
+ * - An empty list counts as no data, and also falls back. See `hasContent`.
  */
 export function useApi<T>(
   fetcher: () => Promise<T>,
@@ -50,10 +51,33 @@ export function useApi<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const live = hasContent(state.data);
+
   return {
-    data: state.data ?? fallback,
+    data: live ? (state.data as T) : fallback,
     loading: state.loading,
     error: state.error,
-    fromApi: state.data !== null,
+    fromApi: live,
   };
+}
+
+/**
+ * Whether a response actually carried something worth rendering.
+ *
+ * The obvious test — `state.data ?? fallback` — only catches null, so an empty
+ * array read as real data and the section rendered nothing at all. That is how
+ * the public site went blank the moment the API started working: while it was
+ * unreachable every request failed and the bundled content showed, and as soon
+ * as it answered `[]` from an empty database the fallback stopped applying.
+ *
+ * A section with no courses in it is never the intended page, so an empty list
+ * is treated as "nothing came back" and the bundled copy is used instead. This
+ * is only about the public site's read-only fallback; the dashboard, which must
+ * show a list as genuinely empty so staff can add the first item, does not use
+ * this hook.
+ */
+function hasContent<T>(data: T | null): boolean {
+  if (data === null || data === undefined) return false;
+  if (Array.isArray(data)) return data.length > 0;
+  return true;
 }
