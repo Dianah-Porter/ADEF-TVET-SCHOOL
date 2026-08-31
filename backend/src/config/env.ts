@@ -25,7 +25,24 @@ const envSchema = z.object({
 
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 
-  STORAGE_DRIVER: z.enum(['local']).default('local'),
+  /**
+   * SameSite policy for the refresh cookie.
+   *
+   * "lax" is right when the site and API share an origin. When they are on
+   * different domains — which is what deploying the two halves as separate
+   * Vercel projects means — the browser will not send a Lax cookie on the
+   * refresh call at all, and every staff session would silently die after the
+   * access token expired. That case needs "none", which browsers only honour
+   * over HTTPS.
+   */
+  COOKIE_SAMESITE: z.enum(['lax', 'none', 'strict']).default('lax'),
+
+  STORAGE_DRIVER: z.enum(['local', 'vercel-blob']).default('local'),
+
+  // Only read when STORAGE_DRIVER is "vercel-blob". Optional here so a local
+  // install needs neither; the driver itself fails loudly if one is missing.
+  BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
+  BLOB_BASE_URL: z.string().url().optional(),
   UPLOAD_DIR: z.string().default('uploads'),
   PUBLIC_BASE_URL: z.string().url().default('http://localhost:4000'),
 

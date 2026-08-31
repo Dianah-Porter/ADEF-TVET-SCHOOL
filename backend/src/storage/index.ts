@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { env } from '../config/env';
 import { LocalDriver } from './LocalDriver';
+import { VercelBlobDriver, blobConfigOrThrow } from './VercelBlobDriver';
 import type { StorageDriver } from './StorageDriver';
 
 export type { StorageDriver, StoredFile } from './StorageDriver';
@@ -9,6 +10,10 @@ function createDriver(): StorageDriver {
   switch (env.STORAGE_DRIVER) {
     case 'local':
       return new LocalDriver();
+    case 'vercel-blob': {
+      const { token, baseUrl } = blobConfigOrThrow();
+      return new VercelBlobDriver(token, baseUrl);
+    }
     default:
       throw new Error(`Unknown STORAGE_DRIVER: ${env.STORAGE_DRIVER}`);
   }

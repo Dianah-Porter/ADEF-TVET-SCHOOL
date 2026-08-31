@@ -59,8 +59,11 @@ export const REFRESH_COOKIE_NAME = 'adef_refresh';
  */
 export const refreshCookieOptions = {
   httpOnly: true,
-  secure: env.isProduction,
-  sameSite: 'lax' as const,
+  // SameSite=None is only honoured on a secure connection, so choosing it
+  // forces the secure flag regardless of NODE_ENV. Without this the cookie
+  // would be silently dropped rather than rejected with a useful error.
+  secure: env.isProduction || env.COOKIE_SAMESITE === 'none',
+  sameSite: env.COOKIE_SAMESITE,
   path: '/api/v1/auth',
   maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
 };
