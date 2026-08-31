@@ -3,7 +3,7 @@
 REST API and admin backend for the ADEF TVET School website. Serves the public
 gallery and announcements, and powers the admin dashboard that publishes them.
 
-The frontend lives one directory up, in `../src`. Nothing here modifies it.
+The frontend is a sibling package in `../frontend`. Nothing here modifies it.
 
 ## Requirements
 
@@ -332,10 +332,18 @@ and why, rather than failing the whole request:
 ### Swapping storage backends
 
 `src/storage/StorageDriver.ts` is four methods wide — `put`, `remove`,
-`exists`, `url`. Adding a Cloudinary or S3 driver means writing one file and
-changing `STORAGE_DRIVER` in `.env`; nothing outside `src/storage/` knows where
-a file physically lives. That matters because most free hosting wipes the disk
-on every redeploy, so this switch needs to already exist on the day you deploy.
+`exists`, `url`. Nothing outside `src/storage/` knows where a file physically
+lives, so a new backend is one file plus a case in `createDriver()`.
+
+Two drivers ship:
+
+- `local` writes to `UPLOAD_DIR`. Right for development and for any host with a
+  persistent volume.
+- `vercel-blob` writes to Vercel Blob. Required on Vercel, whose filesystem is
+  read-only apart from `/tmp`, and whose `/tmp` is discarded when the instance
+  is recycled — `local` there returns URLs that 404 shortly afterwards.
+
+Cloudinary or S3 would follow the same shape.
 
 ## Gallery
 
@@ -410,15 +418,18 @@ works on free tiers.
    `npm run db:seed` to create the first administrator. **Change that password
    immediately after the first sign-in.**
 
-**Cookies across different domains.** If the API and the site end up on
-unrelated domains rather than subdomains, the refresh cookie needs
-`sameSite: 'none'` (which requires HTTPS) in `src/lib/tokens.ts`. Hosting both
-under one domain avoids the problem entirely and is the better arrangement.
+**Cookies across different domains.** When the API and the site are not on the
+same origin — two Vercel projects are exactly that — set `COOKIE_SAMESITE=none`.
+A `Lax` cookie is never sent across sites, so refresh fails and every staff
+session ends fifteen minutes after sign-in. `none` requires HTTPS, which the
+code enforces by forcing the `Secure` flag alongside it. Hosting both under one
+domain avoids the question entirely and is still the better arrangement.
 
-**Uploads do not survive a redeploy** on most free hosts, which wipe the
-container disk. Before going live for real, either attach a persistent volume or
-write the Cloudinary/S3 driver described above — the interface is already there
-so nothing else has to change.
+**Uploads do not survive a redeploy** on any host that wipes the container
+disk, which includes every serverless platform. Either attach a persistent
+volume and keep `STORAGE_DRIVER=local`, or set `vercel-blob`.
+
+For a step-by-step Vercel walkthrough covering both, see `../DEPLOYMENT.md`.
 
 ## Known advisories
 
