@@ -29,6 +29,94 @@ unchanged with `STORAGE_DRIVER=local`. Nothing here locks you in either way.
 
 ---
 
+## If the repository does not appear in Vercel
+
+Vercel does not browse GitHub as you. It sees repositories through the **Vercel
+GitHub App**, and that app is installed *per GitHub account* by someone with
+admin rights on it.
+
+Being a collaborator gives you push access, not the right to install an app on
+the owner's account. So if `ADEF` is owned by another personal account, it will
+not appear in your import list no matter how many times you reconnect GitHub —
+installing the app on your own account only covers repositories your account
+owns.
+
+Four ways out, in the order worth trying.
+
+### A. Ask the owner to grant the app — keeps automatic deploys
+
+The owner opens <https://github.com/apps/vercel>, clicks **Configure**, picks
+their account, and grants access to `ADEF` (either "All repositories" or "Only
+select repositories" with `ADEF` ticked).
+
+The repository then appears in *your* import list, because Vercel checks two
+things: that the app can see the repository, and that your linked GitHub
+account can too. You already satisfy the second as a collaborator.
+
+This is the one to prefer — every push to `master` redeploys, which is the
+whole point of connecting Git.
+
+### B. Move the repository into a GitHub organisation — best long term
+
+Free, and the right shape for a project with more than one person on it.
+
+1. The owner creates an organisation.
+2. **Settings → General → Transfer ownership**, moving `ADEF` into it.
+3. They add you as a member with **Admin** on the repository.
+4. Either of you installs Vercel on the organisation.
+
+GitHub redirects the old URL, so existing clones and remotes keep working
+without changes.
+
+### C. Deploy with the CLI — no GitHub connection at all
+
+The fastest way to a working URL, and it does not need the owner. Vercel
+uploads the folder directly, so who owns the repository stops mattering.
+
+```bash
+npm install -g vercel
+vercel login
+```
+
+Then deploy each half from its own directory:
+
+```bash
+cd backend
+vercel            # answer the setup questions; deploys a preview
+vercel --prod     # promote to production
+```
+
+```bash
+cd frontend
+vercel
+vercel --prod
+```
+
+When asked *"In which directory is your code located?"*, answer `./` — you are
+already inside the right folder, and each folder's `vercel.json` is picked up
+automatically.
+
+Environment variables still have to be set. Either add them in the dashboard
+after the first deploy and run `vercel --prod` again, or add them from the
+terminal:
+
+```bash
+vercel env add DATABASE_URL production
+```
+
+The trade-off: **no automatic deploys.** Pushing to GitHub does nothing; you
+redeploy by running `vercel --prod` again. Fine for testing, worth replacing
+with A or B before this is something the school depends on.
+
+### D. Fork it — last resort
+
+Forking puts a copy under your own account, where Vercel can see it. It works,
+but the fork immediately starts drifting from the original and every change has
+to travel back as a pull request. Only worth it if the owner is unreachable and
+you need automatic deploys today.
+
+---
+
 ## Step 1 — A database
 
 Vercel gives you no PostgreSQL, so pick a hosted one. [Neon](https://neon.tech)
@@ -75,6 +163,11 @@ each must be at least 32 characters — the server refuses to start otherwise.
 
 - **Root Directory:** `backend`
 - **Framework Preset:** Other
+
+If the repository is not in the list, see *If the repository does not appear in
+Vercel* above — you are almost certainly a collaborator rather than the owner.
+Deploying with the CLI instead means skipping the import entirely; the
+environment variables below still apply.
 
 Everything else is already in `backend/vercel.json`.
 
