@@ -40,7 +40,12 @@ export function LoginPage() {
         // banner when the failure does not belong to a specific field.
         if (!error.fields) setFormError(error.message);
       } else {
-        setFormError('Could not reach the server. Check that the API is running.');
+        // Everything the client throws is an ApiError now, so reaching here
+        // means something unexpected — worth saying so rather than blaming the
+        // API, which sent nothing at all.
+        setFormError(
+          error instanceof Error ? error.message : 'Something went wrong signing in.',
+        );
       }
     } finally {
       setSubmitting(false);

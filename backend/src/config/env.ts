@@ -98,12 +98,17 @@ if (!parsed.success) {
     .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
     .join('\n');
 
-  console.error(
-    `\nInvalid environment configuration:\n\n${issues}\n\n` +
-      'Locally these live in backend/.env — copy .env.example if you have not\n' +
-      'already. When deployed they are the host\'s environment variables.\n',
+  // Thrown, not process.exit(1). On a serverless platform an exiting process
+  // is reported as an opaque FUNCTION_INVOCATION_FAILED with no reason
+  // attached anywhere the caller can see, which makes a simple typo in an
+  // environment variable almost impossible to diagnose. A thrown error can be
+  // caught at the entry point and turned into a response that says what is
+  // actually wrong. Locally it still stops the process with the same message.
+  throw new Error(
+    `Invalid environment configuration:\n${issues}\n\n` +
+      'Locally these live in backend/.env — copy .env.example if you have not ' +
+      "already. When deployed they are the host's environment variables.",
   );
-  process.exit(1);
 }
 
 const raw = parsed.data;

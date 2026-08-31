@@ -91,13 +91,34 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   // FormData must set its own Content-Type so the multipart boundary is right.
   if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json';
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    credentials: 'include',
-    signal,
-    body: isFormData ? body : body === undefined ? undefined : JSON.stringify(body),
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      credentials: 'include',
+      signal,
+      body: isFormData ? body : body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (cause) {
+    // fetch only rejects when the response never arrived: the API is
+    // unreachable, DNS failed, or the browser blocked it because the response
+    // carried no CORS headers for this origin. The browser deliberately hides
+    // which, so the message names all three rather than guessing.
+    //
+    // A crashed API is a common cause: if it dies before its CORS middleware
+    // runs, the error page comes back without the headers, and the browser
+    // reports that as a network failure rather than the 500 it really is.
+    if ((cause as Error)?.name === 'AbortError') throw cause;
+
+    throw new ApiError(
+      0,
+      'NETWORK',
+      `Could not reach the API at ${API_BASE}. It may be down, still starting, ` +
+        'or refusing requests from this site.',
+    );
+  }
 
   if (response.status === 204) return undefined as T;
 
@@ -110,7 +131,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   try {
     payload = (await response.json()) as typeof payload;
   } catch {
-    throw new ApiError(response.status, 'NETWORK', 'The server sent an unreadable response.');
+    // Not JSON. Almost always the hosting platform's own error page, which
+    // means the request never reached the application — so the status is the
+    // useful part and is put in the message where it will be seen.
+    throw new ApiError(
+      response.status,
+      'BAD_RESPONSE',
+      response.ok
+        ? 'The server sent a response this app could not read.'
+        : `The server returned an error (HTTP ${response.status}) before the API could handle the request.`,
+    );
   }
 
   if (!response.ok) {
