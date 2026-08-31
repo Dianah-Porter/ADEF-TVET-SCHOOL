@@ -51,7 +51,13 @@ const GALLERY_FILES = [
   'image-4.png',
 ];
 
-const FRONTEND_IMPORTS = path.resolve(__dirname, '../../src/imports');
+/**
+ * The seed reads its images straight out of the frontend's bundled assets, so
+ * the two live in one repository and this path crosses between them. It breaks
+ * if the frontend is ever deployed from a separate checkout — at which point
+ * the images should be uploaded through the dashboard instead.
+ */
+const FRONTEND_IMPORTS = path.resolve(__dirname, '../../frontend/src/imports');
 
 async function seedAdmin() {
   const email = env.SEED_ADMIN_EMAIL;

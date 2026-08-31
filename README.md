@@ -1,95 +1,70 @@
 # ADEF TVET School
 
-The school's public website, plus an admin dashboard for publishing to it.
-
-Originally generated from
-[this Figma design](https://www.figma.com/design/LT2eGd14vfFYEFEKnOhbtE/Build-ADEF-TVET-School-Website).
-
-## Layout
+The school's public website and the dashboard staff use to run it.
 
 ```
-ADEF/
-├─ src/              the website (Vite + React 18 + Tailwind 4)
-│  ├─ app/components/    public sections
-│  ├─ app/admin/         the dashboard, at /admin
-│  ├─ app/lib/api.ts     API client
-│  └─ app/routes.tsx     "/" is the site, "/admin/*" is the dashboard
-└─ backend/          the API (Express + TypeScript + PostgreSQL)
+.
+├── frontend/    Vite + React. The public site and the admin dashboard.
+└── backend/     Express + Prisma + PostgreSQL. The API.
 ```
 
-## Running it
+The two halves are independent packages with their own `package.json`,
+dependencies and deploy configuration. They are kept in one repository because
+they are always changed together — a new field on the API almost always means a
+new field on a form — but nothing about the layout ties them to being deployed
+to the same place.
 
-Two terminals. The API first, since the site reads from it.
+## Running it locally
 
-Needs **PostgreSQL running locally** (no Docker) — see `backend/README.md`
-for the one-time database setup.
+You need Node 20+ and a PostgreSQL database.
+
+**Backend** — first time:
 
 ```bash
-# Terminal 1 — API on :4000
 cd backend
+cp .env.example .env        # then fill in DATABASE_URL and the two JWT secrets
 npm install
-cp .env.example .env      # set DATABASE_URL and the two JWT secrets
 npm run db:migrate
-npm run db:seed           # creates the first admin, imports the 21 photos
-npm run dev
-
-# Terminal 2 — website on :5173
-npm install
-npm run dev
+npm run db:seed             # creates the first admin and the site's content
+npm run dev                 # http://localhost:4000
 ```
 
-| | |
-| --- | --- |
-| Website | <http://localhost:5173> |
-| Dashboard | <http://localhost:5173/admin> |
-| API health | <http://localhost:4000/api/v1/health> |
+**Frontend**, in a second terminal:
 
-Sign in with the `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` from
-`backend/.env`. **Change that password after the first sign-in.**
+```bash
+cd frontend
+npm install
+npm run dev                 # http://localhost:5173
+```
 
-`backend/README.md` covers the API in full.
+Sign in at http://localhost:5173/admin/login with the `SEED_ADMIN_*`
+credentials from `backend/.env`.
 
-### Why the scripts call `node node_modules/...`
+## Checks
 
-This project lives in a folder whose name contains `&`
-(`Backend & Frontend ADEF`). On Windows, npm's generated `.cmd` shims expand
-that path unquoted, so `cmd` splits the command at the ampersand and any script
-calling a local binary dies with
-`'Frontend' is not recognized as an internal or external command`.
+Neither package runs tests yet. Both typecheck:
 
-Calling each binary through `node` with an explicit path skips the shims and
-works everywhere. `npx` is broken by the same thing — use `npm run <script>`.
-Renaming the parent folder to drop the `&` would let the plain `vite` / `tsc`
-forms work again.
+```bash
+cd backend  && npm run typecheck && npm run lint
+cd frontend && npm run typecheck
+```
 
-## The dashboard
+The frontend check matters more than it looks: Vite compiles through esbuild,
+which strips types without checking them, so a type error there will build and
+deploy perfectly happily.
 
-`/admin` is part of this same app, not a separate build. It is added purely by
-new files: `routes.tsx` mounts the untouched `App.tsx` at `/`, so nothing about
-the public site's markup or styling changed when the dashboard arrived.
+There is also `cd backend && npm run test:smoke`, which exercises the API
+against a running server.
 
-- **Overview** — counts, storage used, recent activity
-- **Gallery** — drag-and-drop upload, inline editing, show/hide, drag to reorder
-- **Announcements** — write, attach PDFs, save as draft, publish, pin
+## Deploying
 
-Sessions survive a page reload without ever putting a token in `localStorage`:
-the access token is held in memory and an httpOnly cookie silently restores it.
+See [DEPLOYMENT.md](DEPLOYMENT.md). The short version: they are two separate
+Vercel projects pointed at this one repository, one with its **Root Directory**
+set to `frontend`, the other to `backend`.
 
-## The API connection
+Three settings are easy to miss and each breaks something quietly:
 
-`VITE_API_URL` (see `.env.example`) points the site at the backend. It is read
-at build time, so a production build needs it set before `npm run build`.
-
-**The gallery degrades gracefully.** If the API is unreachable it falls back to
-the photos bundled with the site, so the page is never blank. The announcements
-section removes itself when there is nothing published, rather than showing an
-empty heading.
-
-## Things worth knowing
-
-The `dist/` build bundles ~31 MB of PNGs from `src/imports/`, because those
-photos are still imported as the gallery's fallback. Once the API is deployed
-and the gallery is genuinely reading from it, dropping the fallback imports
-would cut the bundle dramatically — worth doing, but it trades away the
-offline-safe behaviour above, so it is a deliberate choice rather than an
-obvious win.
+- `STORAGE_DRIVER=vercel-blob` on the backend, or uploads vanish.
+- `COOKIE_SAMESITE=none`, or staff are signed out every 15 minutes.
+- `VITE_API_URL` on the frontend, or the site shows its built-in placeholder
+  content and nothing staff edit ever appears.
