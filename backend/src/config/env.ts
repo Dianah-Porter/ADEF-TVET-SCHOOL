@@ -23,7 +23,16 @@ const envSchema = z.object({
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
 
-  CORS_ORIGINS: z.string().default('http://localhost:5173'),
+  /**
+   * Comma-separated list of origins allowed to call this API.
+   *
+   * Deliberately has no default. The old one was the Vite dev server, which is
+   * right locally and wrong in production: a deployment that forgot to set this
+   * would quietly accept credentialed requests from anything served on
+   * localhost:5173. Unset in production now means "allow nothing", which fails
+   * visibly instead.
+   */
+  CORS_ORIGINS: z.string().optional(),
 
   /**
    * SameSite policy for the refresh cookie.
@@ -69,7 +78,20 @@ const envSchema = z.object({
   SEED_ADMIN_NAME: z.string().optional(),
 });
 
-const parsed = envSchema.safeParse(process.env);
+/**
+ * A variable set to an empty value is treated as absent.
+ *
+ * Hosting dashboards hand every declared variable to the process, including the
+ * ones left blank — and `z.string().url()` rejects "" rather than falling back
+ * to its default. Without this, following the documented deployment order
+ * (deploy the API first, fill in APP_URL once the frontend has a URL) would
+ * crash the API at boot on a blank string.
+ */
+const provided = Object.fromEntries(
+  Object.entries(process.env).filter(([, value]) => value !== undefined && value !== ''),
+);
+
+const parsed = envSchema.safeParse(provided);
 
 if (!parsed.success) {
   const issues = parsed.error.issues
@@ -77,8 +99,9 @@ if (!parsed.success) {
     .join('\n');
 
   console.error(
-    `\nInvalid environment configuration. Fix these in backend/.env:\n\n${issues}\n\n` +
-      'Copy .env.example to .env if you have not already.\n',
+    `\nInvalid environment configuration:\n\n${issues}\n\n` +
+      'Locally these live in backend/.env — copy .env.example if you have not\n' +
+      'already. When deployed they are the host\'s environment variables.\n',
   );
   process.exit(1);
 }
@@ -91,8 +114,15 @@ export const env = {
   isProduction: raw.NODE_ENV === 'production',
   isDevelopment: raw.NODE_ENV === 'development',
 
-  /** CORS_ORIGINS is a comma-separated string in .env; callers want a list. */
-  corsOrigins: raw.CORS_ORIGINS.split(',')
+  /**
+   * CORS_ORIGINS is a comma-separated string; callers want a list.
+   *
+   * The Vite dev server is assumed only when the variable is absent outside
+   * production, so local work needs no configuration while a production
+   * deployment that has not set it yet allows no cross-origin request at all.
+   */
+  corsOrigins: (raw.CORS_ORIGINS ?? (raw.NODE_ENV === 'production' ? '' : 'http://localhost:5173'))
+    .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
 

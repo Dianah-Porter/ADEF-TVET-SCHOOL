@@ -11,6 +11,12 @@
  * database renders the real ADEF site rather than a page of placeholders.
  *
  * Safe to run repeatedly — every write is an upsert keyed on something stable.
+ *
+ * Images go through the storage driver rather than straight to disk, so running
+ * this against a deployment with STORAGE_DRIVER=vercel-blob uploads them to the
+ * Blob store and records the Blob URLs. Writing to disk here would have stored
+ * localhost URLs in the production database and left the files on whichever
+ * machine ran the seed.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -20,6 +26,7 @@ import * as argon2 from '@node-rs/argon2';
 import { prisma } from '../src/lib/prisma';
 import { env } from '../src/config/env';
 import { getSettings } from '../src/modules/content/content.service';
+import { storage } from '../src/storage';
 
 /**
  * The exact render order of `galleryImages` in
@@ -84,39 +91,36 @@ async function seedAdmin() {
 }
 
 async function seedGallery(uploadedById: string | null) {
-  const galleryDir = path.join(env.uploadRoot, 'gallery', 'seed');
-  const thumbDir = path.join(galleryDir, 'thumbs');
-  await fs.mkdir(thumbDir, { recursive: true });
-
   let created = 0;
   let updated = 0;
 
   for (const [index, filename] of GALLERY_FILES.entries()) {
     const source = path.join(FRONTEND_IMPORTS, filename);
 
+    let original: Buffer;
     try {
-      await fs.access(source);
+      original = await fs.readFile(source);
     } catch {
       console.log(`  ! missing ${filename} — skipped`);
       continue;
     }
 
-    const destination = path.join(galleryDir, filename);
-    // Copy rather than convert: an identical byte-for-byte file removes any
-    // doubt about whether the gallery still looks the way it did.
-    await fs.copyFile(source, destination);
-
     const thumbName = filename.replace(/\.png$/i, '.webp');
-    await sharp(source)
-      .resize({ width: 480, withoutEnlargement: true })
-      .webp({ quality: 80 })
-      .toFile(path.join(thumbDir, thumbName));
-
-    const metadata = await sharp(destination).metadata();
-    const stats = await fs.stat(destination);
-
     const storageKey = `gallery/seed/${filename}`;
     const thumbnailKey = `gallery/seed/thumbs/${thumbName}`;
+
+    // The original bytes are stored unchanged, so the seeded gallery is
+    // pixel-for-pixel what the site shipped before it was database-backed.
+    const stored = await storage.put(storageKey, original, 'image/png');
+
+    const thumbnail = await sharp(original)
+      .resize({ width: 480, withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+
+    const storedThumb = await storage.put(thumbnailKey, thumbnail, 'image/webp');
+
+    const metadata = await sharp(original).metadata();
 
     const data = {
       title: `Campus photo ${String(index + 1).padStart(2, '0')}`,
@@ -124,12 +128,12 @@ async function seedGallery(uploadedById: string | null) {
       // each photo shows. The dashboard exists so staff can write them.
       altText: 'Students and facilities at ADEF TVET School',
       category: 'Campus',
-      url: `${env.PUBLIC_BASE_URL}/uploads/${storageKey}`,
+      url: stored.url,
       thumbnailKey,
-      thumbnailUrl: `${env.PUBLIC_BASE_URL}/uploads/${thumbnailKey}`,
+      thumbnailUrl: storedThumb.url,
       width: metadata.width ?? 0,
       height: metadata.height ?? 0,
-      sizeBytes: stats.size,
+      sizeBytes: stored.sizeBytes,
       mimeType: 'image/png',
       sortOrder: index,
       published: true,
@@ -231,35 +235,33 @@ main()
 async function copySeedImage(folder: string, filename: string) {
   const source = path.join(FRONTEND_IMPORTS, filename);
 
+  let input: Buffer;
   try {
-    await fs.access(source);
+    input = await fs.readFile(source);
   } catch {
     return null;
   }
 
-  const targetDir = path.join(env.uploadRoot, folder, 'seed');
-  await fs.mkdir(targetDir, { recursive: true });
-
   const webpName = filename.replace(/\.[^.]+$/, '.webp');
-  const destination = path.join(targetDir, webpName);
+  const storageKey = `${folder}/seed/${webpName}`;
 
   // Converted rather than copied: these are the same images the dashboard
   // would produce for an upload, so the site is not serving a PNG where
   // everything else is WebP.
-  const info = await sharp(source)
+  const { data, info } = await sharp(input)
     .rotate()
     .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 82 })
-    .toFile(destination);
+    .toBuffer({ resolveWithObject: true });
 
-  const storageKey = `${folder}/seed/${webpName}`;
+  const stored = await storage.put(storageKey, data, 'image/webp');
 
   return {
     storageKey,
-    url: `${env.PUBLIC_BASE_URL}/uploads/${storageKey}`,
+    url: stored.url,
     width: info.width,
     height: info.height,
-    sizeBytes: info.size,
+    sizeBytes: stored.sizeBytes,
     mimeType: 'image/webp',
   };
 }
