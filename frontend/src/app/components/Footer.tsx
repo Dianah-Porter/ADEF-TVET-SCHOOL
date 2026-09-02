@@ -135,10 +135,10 @@ export function Footer() {
                   <Mail className="w-5 h-5 text-[var(--gold)] flex-shrink-0 mt-1" />
                   <div>
                     <a
-                      href="mailto:adeftvet@gmail.com"
+                      href="mailto:info@adeftvet.org"
                       className="text-gray-300 hover:text-[var(--gold)] transition-colors"
                     >
-                      adeftvet@gmail.com
+                      info@adeftvet.org
                     </a>
                   </div>
                 </li>

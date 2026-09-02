@@ -153,7 +153,7 @@ export const STATIC_SETTINGS: SiteSettings = {
   programsCount: 3,
   phone: '+250 789 895 800',
   whatsapp: '+250789895800',
-  email: 'adeftvet@gmail.com',
+  email: 'info@adeftvet.org',
   address: 'NR5, Kigali, Rwanda',
   mapEmbedUrl:
     'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3987.5162978834844!2d30.0588735!3d-1.9440271!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMcKwNTYnMzguNSJTIDMwwrAwMyczMS41IkU!5e0!3m2!1sen!2srw!4v1234567890',

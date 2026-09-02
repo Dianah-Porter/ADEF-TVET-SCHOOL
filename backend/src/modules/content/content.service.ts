@@ -592,7 +592,7 @@ const SETTINGS_DEFAULTS = {
   programsCount: 3,
   phone: '+250 789 895 800',
   whatsapp: '+250789895800',
-  email: 'adeftvet@gmail.com',
+  email: 'info@adeftvet.org',
   address: 'NR5, Kigali, Rwanda',
   mapEmbedUrl: null,
   instagramUrl: 'https://instagram.com/adef_tvet_school',
